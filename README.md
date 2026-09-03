@@ -714,12 +714,6 @@ We welcome contributions! Here's how:
 
 ---
 
-## 📄 License
-
-Apache License 2.0 - See [LICENSE](LICENSE) file for details
-
----
-
 ## 💬 Support
 
 **Issues:** Report bugs and feature requests via GitHub Issues
