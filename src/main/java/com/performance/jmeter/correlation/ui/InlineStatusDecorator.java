@@ -34,7 +34,7 @@ public class InlineStatusDecorator {
 
     private static InlineStatusDecorator instance;
 
-    private static final Pattern VAR_USAGE_PATTERN = Pattern.compile("\\$\\{([^}_][^}]*)}");
+    private static final Pattern VAR_USAGE_PATTERN = Pattern.compile("\\$\\{([^}]+)}");
 
     private JTree jmeterTree;
     private TreeCellRenderer originalRenderer;
@@ -720,8 +720,8 @@ public class InlineStatusDecorator {
 
         JMeterTreeNode currentNode = getCurrentSelectedNode();
 
-        // Check if this is a JSR223 PostProcessor script with vars.put() calls
-        if (currentNode != null && isJSR223PostProcessorNode(currentNode)) {
+        // Check if this is a JSR223 script (Pre/Post/Sampler) with vars.put() calls
+        if (currentNode != null && isJSR223ProcessorNode(currentNode)) {
             // Extract variable name from vars.put("varName", ...) at cursor position
             String varName = extractVarsPutVariableAtPosition(text, caretPos);
             if (varName != null && !varName.isEmpty()) {
@@ -734,9 +734,9 @@ public class InlineStatusDecorator {
         // Check if this is a plain variable name (not ${...} pattern) in an extractor
         if (currentNode != null && isExtractorNode(currentNode)) {
             // This might be the "Name of created variable" field in an extractor
-            // If text doesn't contain ${}, treat it as a variable name to highlight
-            String plainVarName = text.trim();
-            if (!plainVarName.isEmpty() && !plainVarName.contains("${") && !plainVarName.contains("}")) {
+            // Extractors can have semicolon-delimited variable names (e.g., "userId;_sessionToken;userName")
+            String plainVarName = extractVariableFromDelimitedList(text, caretPos, ';');
+            if (plainVarName != null && !plainVarName.isEmpty()) {
                 // Highlight usages of this extracted variable (correlation - no thread group)
                 highlightVariableUsages(plainVarName, false);
                 return;
@@ -764,18 +764,41 @@ public class InlineStatusDecorator {
     }
 
     private String extractPlainVariableName(String text, int position) {
+        // CSV uses comma delimiter
+        return extractVariableFromDelimitedList(text, position, ',');
+    }
+
+    /**
+     * Extracts a single variable name from a delimited list based on cursor position.
+     * Used for:
+     * - JSON Extractor "Names of created variables" field (semicolon-delimited)
+     * - CSV Data Set "Variable Names" field (comma-delimited)
+     *
+     * @param text The full text containing delimited variable names
+     * @param position The cursor position
+     * @param delimiter The delimiter character (';' for extractors, ',' for CSV)
+     * @return The variable name at the cursor position, or null if not found
+     */
+    private String extractVariableFromDelimitedList(String text, int position, char delimiter) {
         if (text == null || position < 0 || position > text.length()) return null;
 
         text = text.trim();
 
-        // If it's a simple single variable name (no commas), return it
-        if (!text.contains(",")) {
+        // Check if text contains ${} patterns - if so, skip this logic
+        if (text.contains("${") || text.contains("}")) {
+            return null;
+        }
+
+        String delimiterStr = String.valueOf(delimiter);
+
+        // If it's a simple single variable name (no delimiters), return it
+        if (!text.contains(delimiterStr)) {
             return text.isEmpty() ? null : text;
         }
 
-        // If it contains commas, extract the variable name at the cursor position
-        // Split by comma and find which segment the cursor is in
-        String[] variables = text.split(",");
+        // If it contains delimiters, extract the variable name at the cursor position
+        // Split by delimiter and find which segment the cursor is in
+        String[] variables = text.split(delimiterStr.equals(";") ? ";" : ",");
         int currentPos = 0;
 
         for (String var : variables) {
@@ -783,7 +806,7 @@ public class InlineStatusDecorator {
             if (position >= currentPos && position <= segmentEnd) {
                 return var.trim();
             }
-            currentPos = segmentEnd + 1; // +1 for the comma
+            currentPos = segmentEnd + 1; // +1 for the delimiter
         }
 
         return null;
@@ -795,10 +818,10 @@ public class InlineStatusDecorator {
         if (te == null) return false;
 
         String className = te.getClass().getName();
+        // Note: JSR223/BeanShell processors are handled separately by isJSR223ProcessorNode
+        // to support both vars.put() and vars.get() navigation
         return className.contains("Extractor") ||
-               className.contains("JSONPostProcessor") ||
-               className.contains("JSR223PostProcessor") ||
-               className.contains("BeanShellPostProcessor");
+               className.contains("JSONPostProcessor");
     }
 
     private boolean isParameterizationConfigNode(JMeterTreeNode node) {
@@ -810,14 +833,18 @@ public class InlineStatusDecorator {
         return className.contains("CSVDataSet");
     }
 
-    private boolean isJSR223PostProcessorNode(JMeterTreeNode node) {
+    private boolean isJSR223ProcessorNode(JMeterTreeNode node) {
         if (node == null) return false;
         TestElement te = node.getTestElement();
         if (te == null) return false;
 
         String className = te.getClass().getName();
         return className.contains("JSR223PostProcessor") ||
-               className.contains("BeanShellPostProcessor");
+               className.contains("JSR223PreProcessor") ||
+               className.contains("JSR223Sampler") ||
+               className.contains("BeanShellPostProcessor") ||
+               className.contains("BeanShellPreProcessor") ||
+               className.contains("BeanShellSampler");
     }
 
     private String extractVarsPutVariableAtPosition(String text, int position) {
@@ -844,6 +871,12 @@ public class InlineStatusDecorator {
     private String extractVariableAtPosition(String text, int position) {
         if (text == null || position < 0 || position > text.length()) return null;
 
+        // First, try to extract vars.get("variableName") pattern
+        String varsGetVar = extractVarsGetVariableAtPosition(text, position);
+        if (varsGetVar != null) {
+            return varsGetVar;
+        }
+
         // Find the nearest ${ before the position and } after the position
         int startIndex = text.lastIndexOf("${", position);
         if (startIndex == -1) return null;
@@ -859,6 +892,27 @@ public class InlineStatusDecorator {
                 return varName;
             }
         }
+        return null;
+    }
+
+    private String extractVarsGetVariableAtPosition(String text, int position) {
+        if (text == null || position < 0 || position > text.length()) return null;
+
+        // Pattern to match vars.get("variableName") - supports both single and double quotes
+        Pattern pattern = Pattern.compile("vars\\.get\\s*\\(\\s*[\"']([^\"']+)[\"']");
+        Matcher matcher = pattern.matcher(text);
+
+        // Find all matches and check if cursor is within the variable name
+        while (matcher.find()) {
+            int varNameStart = matcher.start(1);  // Start of captured group (variable name)
+            int varNameEnd = matcher.end(1);      // End of captured group (variable name)
+
+            // Check if cursor position is within this variable name
+            if (position >= varNameStart && position <= varNameEnd) {
+                return matcher.group(1);
+            }
+        }
+
         return null;
     }
 
