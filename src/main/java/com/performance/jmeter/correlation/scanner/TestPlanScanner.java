@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
 
 public class TestPlanScanner {
 
-    private static final Pattern VARIABLE_USAGE_PATTERN = Pattern.compile("\\$\\{([^}_][^}]*)}");
+    private static final Pattern VARIABLE_USAGE_PATTERN = Pattern.compile("\\$\\{([^}]+)}");
 
     private final CorrelationAnalyzer correlationAnalyzer;
     private final ParameterizationAnalyzer parameterizationAnalyzer;
@@ -292,21 +292,38 @@ public class TestPlanScanner {
 
     /**
      * Collects all ${variableName} usages across the entire test plan.
-     * Used to detect unused extractors.
+     * Also detects vars.get("variableName") in JSR223 scripts.
+     * Used to detect unused extractors and for navigation.
      */
     private Set<String> collectAllVariableUsages(JMeterTreeNode node) {
         Set<String> usages = new HashSet<>();
         TestElement element = node.getTestElement();
-        if (element != null && isHttpSampler(element)) {
-            element.propertyIterator().forEachRemaining(prop -> {
-                String value = prop.getStringValue();
-                if (value != null) {
-                    Matcher matcher = VARIABLE_USAGE_PATTERN.matcher(value);
+        if (element != null) {
+            // Detect ${variable} patterns in HTTP Samplers and other elements
+            if (isHttpSampler(element)) {
+                element.propertyIterator().forEachRemaining(prop -> {
+                    String value = prop.getStringValue();
+                    if (value != null) {
+                        Matcher matcher = VARIABLE_USAGE_PATTERN.matcher(value);
+                        while (matcher.find()) {
+                            usages.add(matcher.group(1));
+                        }
+                    }
+                });
+            }
+
+            // Detect vars.get() in JSR223 PreProcessors, PostProcessors, and Samplers
+            String className = element.getClass().getName();
+            if (className.contains("JSR223") || className.contains("BeanShell")) {
+                String script = element.getPropertyAsString("script");
+                if (script != null && !script.isEmpty()) {
+                    Pattern getPattern = Pattern.compile("vars\\.get\\s*\\(\\s*[\"']([^\"']+)[\"']");
+                    Matcher matcher = getPattern.matcher(script);
                     while (matcher.find()) {
                         usages.add(matcher.group(1));
                     }
                 }
-            });
+            }
         }
 
         Enumeration<?> children = node.children();
