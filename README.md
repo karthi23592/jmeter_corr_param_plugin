@@ -2,11 +2,6 @@
 
 A powerful JMeter GUI plugin that provides **intelligent variable tracking** and **bidirectional navigation** across your entire test plan. Navigate instantly from variable usage to source extractors and vice versa. Track all variables including underscore-prefixed names and JSR223 script variables. Save hours with instant navigation, visual flow tracking, and comprehensive variable inventory.
 
-[![Java](https://img.shields.io/badge/Java-11+-orange.svg)](https://www.oracle.com/java/)
-[![JMeter](https://img.shields.io/badge/JMeter-5.6.3+-red.svg)](https://jmeter.apache.org/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-
----
 
 ## 🎯 Problem Statement
 
