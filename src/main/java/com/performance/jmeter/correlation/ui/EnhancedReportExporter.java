@@ -423,7 +423,6 @@ public class EnhancedReportExporter {
         String threadGroup;
         String samplerName;
         String path;
-
         SamplerInfo(String threadGroup, String samplerName, String path) {
             this.threadGroup = threadGroup;
             this.samplerName = samplerName;
