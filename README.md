@@ -1,4 +1,4 @@
-# JMeter Correlation & Parameterization Status Plugin
+# JMeter Smart variable detector Plugin
 
 A powerful JMeter GUI plugin that provides **real-time visual indicators** and **intelligent analysis** for Correlation and Parameterization across your entire test plan. Save hours of manual verification with instant status visibility, variable tracking, and smart navigation.
 
