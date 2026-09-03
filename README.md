@@ -1,6 +1,6 @@
-# JMeter Smart variable detector Plugin
+# Smart Variable Tracker & Navigator
 
-A powerful JMeter GUI plugin that provides **real-time visual indicators** and **intelligent analysis** for Correlation and Parameterization across your entire test plan. Save hours of manual verification with instant status visibility, variable tracking, and smart navigation.
+A powerful JMeter GUI plugin that provides **intelligent variable tracking** and **bidirectional navigation** across your entire test plan. Navigate instantly from variable usage to source extractors and vice versa. Track all variables including underscore-prefixed names and JSR223 script variables. Save hours with instant navigation, visual flow tracking, and comprehensive variable inventory.
 
 [![Java](https://img.shields.io/badge/Java-11+-orange.svg)](https://www.oracle.com/java/)
 [![JMeter](https://img.shields.io/badge/JMeter-5.6.3+-red.svg)](https://jmeter.apache.org/)
@@ -16,6 +16,8 @@ In large-scale JMeter test plans with hundreds of samplers across multiple threa
 - **Missing correlations**: Dynamic values inadvertently left hardcoded, causing test failures
 - **Unused extractors**: Variables extracted but never used, cluttering the test plan
 - **Lost variable sources**: Difficulty tracking which sampler uses which variable and where it comes from
+- **Underscore variables ignored**: Variables like `${_token}`, `${_sessionId}` not detected by standard tools
+- **JSR223 script variables invisible**: `vars.get()` and `vars.put()` in scripts not tracked for navigation
 - **No visibility**: No high-level view of overall test plan health
 
 **Result**: Hours wasted on manual inspection, test failures in production, and maintenance headaches.
@@ -24,7 +26,7 @@ In large-scale JMeter test plans with hundreds of samplers across multiple threa
 
 ## ✨ Solution
 
-This plugin provides **instant visibility** with automated analysis, smart navigation, and comprehensive reporting. Transform test plan maintenance from hours to minutes.
+This plugin provides **instant visibility** with automated analysis, smart bidirectional navigation, comprehensive JSR223 script support, and complete variable tracking including underscore-prefixed variables. Transform test plan maintenance from hours to minutes.
 
 ---
 
@@ -76,23 +78,42 @@ Comprehensive dashboard with tree structure, details panel, and summary statisti
 
 ---
 
-### 3. **Smart Variable Navigation**
-Double-click any variable to instantly jump to its source (extractor or CSV).
+### 3. **Smart Bidirectional Variable Navigation**
+Navigate from usage to source AND from source to usage with double-click support for all variable patterns.
 
-**How to use:**
+**Usage → Source Navigation:**
 1. Enable tree status: **Tools → Show C/P Status in Tree**
 2. Select any sampler in the tree
-3. In the right panel, **double-click** on any field containing `${variableName}`
+3. In any text field, **double-click** on:
+   - `${variableName}` - Standard JMeter variables
+   - `${_variableName}` - Underscore-prefixed variables
+   - `vars.get("variableName")` - JSR223 script variable reads
+   - `vars.get("_variableName")` - Underscore variables in scripts
 4. Automatically navigates to the extractor/CSV that creates it
+
+**Source → Usage Navigation:**
+1. Select an extractor (JSON, Regex, XPath, etc.)
+2. Double-click the variable name in "Names of created variables" field
+3. Works with semicolon-delimited lists: `userId;_sessionToken;userName`
+4. All samplers using that variable are highlighted in **purple**
+
+**JSR223 Script Support:**
+- Double-click on variable names inside `vars.get("varName")` calls
+- Works in PreProcessor, PostProcessor, and Sampler scripts
+- Navigates to source extractors or CSV configs
 
 **Works with:**
 - Text fields (Path, Parameters, Body, Headers)
 - Tables (HTTP Arguments, Headers table)
-- Extractors (variable name fields)
-- CSV Data Set Config (variable names field)
+- Extractors (variable name fields with semicolon-delimited lists)
+- CSV Data Set Config (comma-delimited variable names)
+- JSR223 scripts (both vars.get and vars.put patterns)
 
 **Pros:**
 - ✅ Find variable sources in seconds, not minutes
+- ✅ Navigate both ways: usage→source and source→usage
+- ✅ Full support for underscore-prefixed variables
+- ✅ JSR223 script variables fully trackable
 - ✅ No more manual searching through dozens of samplers
 - ✅ Understand variable flow instantly
 - ✅ Verify correlation chains quickly
@@ -105,19 +126,21 @@ Highlight all samplers that use a specific variable with purple visual indicator
 **How to use:**
 
 **From Extractor:**
-1. Select an extractor (JSON, Regex, JSR223 PostProcessor)
-2. Double-click the "Name of created variable" field
-3. All samplers using that variable are highlighted in **purple**
+1. Select an extractor (JSON, Regex, XPath, XPath2, CSS/JQuery, Boundary)
+2. Double-click the "Names of created variables" field
+3. For multiple variables (e.g., `userId;_token;userName`), click on specific variable
+4. All samplers using that variable are highlighted in **purple**
 
 **From CSV Config:**
 1. Select a CSV Data Set Config
 2. Double-click a variable name in "Variable Names" field
-3. All samplers using that CSV variable are highlighted
+3. For comma-delimited lists (e.g., `user,pass,_apiKey`), click on specific variable
+4. All samplers using that CSV variable are highlighted
 
-**From JSR223 PostProcessor:**
-1. Select JSR223 PostProcessor with `vars.put("varName", ...)`
+**From JSR223 Processor:**
+1. Select JSR223 PreProcessor/PostProcessor/Sampler with `vars.put("varName", ...)`
 2. Double-click the variable name in the script
-3. All usages highlighted in purple
+3. All usages highlighted in purple (including vars.get() calls)
 
 **Clear highlights:**
 - Go to **Tools → Clear Variable Highlights**
@@ -125,21 +148,23 @@ Highlight all samplers that use a specific variable with purple visual indicator
 **Pros:**
 - ✅ Instantly see variable impact across test plan
 - ✅ Identify unused extractors (no highlights = unused)
+- ✅ Works with underscore variables: `_token`, `_sessionId`, etc.
 - ✅ Verify parameterization coverage
 - ✅ Visual debugging of correlation chains
+- ✅ Tracks vars.get() usage in JSR223 scripts
 
 ---
 
 ### 5. **Correlation Info Dialog**
-View all variables extracted and used by a sampler in one dialog.
+View all variables extracted and used by a sampler in one dialog with full underscore support.
 
 **How to use:**
 1. Enable tree status
 2. Right-click on any sampler with extractors or correlation variables
 3. Select **"View / Trace Correlation Variables ⓘ"**
 4. Dialog shows:
-   - **Variables Extracted** by this sampler
-   - **Variables Used** by this sampler
+   - **Variables Extracted** by this sampler (including `_variableName` patterns)
+   - **Variables Used** by this sampler (including underscore and JSR223 vars.get)
    - Variable sources (Extractor type, CSV, etc.)
 
 **Alternative:**
@@ -147,6 +172,8 @@ View all variables extracted and used by a sampler in one dialog.
 
 **Pros:**
 - ✅ Complete variable overview in one view
+- ✅ Shows underscore-prefixed variables correctly
+- ✅ Detects vars.get() usage in JSR223 scripts
 - ✅ Understand data flow without opening multiple elements
 - ✅ Quickly verify correlation chains
 - ✅ Navigate to sources with "Go To" buttons
@@ -161,7 +188,7 @@ Quickly locate all JSR223 processors and extractors across the entire test plan.
 2. Choose:
    - **JSR223 PostProcessors** - Find all post-processors (for correlation)
    - **JSR223 PreProcessors** - Find all pre-processors (for setup/parameterization)
-   - **All Extractors** - Find JSON, Regex, Boundary, XPath extractors
+   - **All Extractors** - Find JSON, Regex, Boundary, XPath, XPath2, CSS/JQuery extractors
 
 **Results:**
 - Organized by Thread Group
@@ -217,7 +244,8 @@ Generate comprehensive reports with complete variable tracking and test plan str
 **Report Contents:**
 ```
 ===============================================
-  CORRELATION & PARAMETERIZATION REPORT
+  VARIABLE TRACKING & FLOW REPORT
+  Smart Variable Tracker & Navigator
 ===============================================
 
 SUMMARY STATISTICS:
@@ -241,18 +269,18 @@ Correlation Status:
   👥 Login Thread Group [ThreadGroup] C:✓ P:✓
     🌐 /login [HTTPSampler] C:✓ P:✓
       ├─ Variables Extracted:
-      │  └─ sessionToken (JSON Extractor)
+      │  └─ _sessionToken (JSON Extractor)
       ├─ Variables Used:
       │  └─ ${username} from CSV Parameter: users.csv
     🌐 /dashboard [HTTPSampler] C:✓ P:✓
       ├─ Variables Used:
-      │  └─ ${sessionToken} from Extractor: JSON Extractor
+      │  └─ ${_sessionToken} from Extractor: JSON Extractor
 
 ===============================================
   VARIABLE DETAILS
 ===============================================
 
-Variable: ${sessionToken}
+Variable: ${_sessionToken}
   Source Type: Extractor
   Source Name: JSON Extractor - Token
   Thread Group: Login Thread Group
@@ -275,6 +303,8 @@ Variable: ${username}
 - ✅ Identify unused variables instantly
 - ✅ Perfect for handover to new team members
 - ✅ Thread Group and structure context included
+- ✅ Includes underscore-prefixed variables
+- ✅ Shows JSR223 script variable usage
 
 ---
 
@@ -416,7 +446,7 @@ cp target/correlation-parameterization-plugin-*.jar $JMETER_HOME/lib/ext/
 ```
 1. Select a sampler with variables
 2. Right-click → View / Trace Correlation Variables
-3. See all variables used and extracted
+3. See all variables used and extracted (including _underscore vars)
 4. Click "Go To" to navigate to sources
 5. Verify correlation chain is complete
 ```
@@ -431,9 +461,25 @@ cp target/correlation-parameterization-plugin-*.jar $JMETER_HOME/lib/ext/
    - Find where it should be used (bug fix)
 ```
 
+**Testing Underscore Variables:**
+```
+1. Create variables like ${_token}, ${_userId}, ${_apiKey}
+2. Use them in samplers
+3. Double-click to navigate to source
+4. Verify they appear in Correlation Info dialog
+```
+
+**Testing JSR223 Navigation:**
+```
+1. In JSR223 PreProcessor/PostProcessor, add vars.get("userId")
+2. Double-click on "userId" inside the string
+3. Navigate to where userId is extracted
+4. Works with underscore vars: vars.get("_token")
+```
+
 ---
 
-## 🏗️ Architecture
+## 🏗️ Architecture & Implementation
 
 ### High-Level Flow
 
@@ -464,10 +510,10 @@ CorrelationAnalyzer  ParameterizationAnalyzer  VariableTracker
 | Component | Purpose |
 |-----------|---------|
 | `TestPlanScanner` | Traverses test plan tree, collects all elements |
-| `CorrelationAnalyzer` | Detects extractors: JSON, Regex, Boundary, JSR223 |
+| `CorrelationAnalyzer` | Detects extractors: JSON, Regex, Boundary, XPath, XPath2, CSS, JSR223 |
 | `ParameterizationAnalyzer` | Detects CSV, variables, functions |
 | `StatusAggregator` | Rolls up status from children to parents |
-| `InlineStatusDecorator` | Renders C/P indicators in tree |
+| `InlineStatusDecorator` | Renders C/P indicators in tree, handles navigation |
 | `EnhancedReportExporter` | Generates detailed reports with variable tracking |
 | `CorrelationParameterizationPanel` | Main UI with tree, filters, export |
 
@@ -477,18 +523,30 @@ CorrelationAnalyzer  ParameterizationAnalyzer  VariableTracker
 - ✅ JSON Extractor / JSONPostProcessor
 - ✅ Regular Expression Extractor
 - ✅ Boundary Extractor
-- ✅ XPath Extractor
-- ✅ XPath2 Extractor
-- ✅ CSS/JQuery Extractor
+- ✅ XPath Extractor (XPath 1.0)
+- ✅ XPath2 Extractor (XPath 2.0)
+- ✅ CSS/JQuery Extractor (HtmlExtractor)
 - ✅ JSR223 PostProcessor with `vars.put("varName", ...)`
+- ✅ JSR223 PreProcessor with `vars.put("varName", ...)`
+- ✅ JSR223 Sampler with `vars.put("varName", ...)`
 - ✅ BeanShell PostProcessor with variable extraction
+- ✅ BeanShell PreProcessor with variable extraction
+- ✅ BeanShell Sampler with variable extraction
 
 **Parameterization Detection:**
 - ✅ CSV Data Set Config (detects variable names)
 - ✅ User Defined Variables
 - ✅ JMeter Functions: `${__Random()}`, `${__UUID()}`, `${__time()}`, etc.
-- ✅ Variable usage: `${varName}` references
+- ✅ Variable usage: `${varName}` references (including underscore: `${_varName}`)
 - ✅ JSR223 PreProcessor parameterization
+- ✅ JSR223 Sampler parameterization
+
+**Variable Usage Tracking:**
+- ✅ `${variableName}` patterns in all properties
+- ✅ `${_variableName}` patterns (underscore-prefixed)
+- ✅ `vars.get("variableName")` in JSR223 scripts
+- ✅ `vars.get("_variableName")` in JSR223 scripts (underscore support)
+- ✅ Works in PreProcessor, PostProcessor, Sampler
 
 **Status Aggregation Rules:**
 - **All children ✓** → Parent = ✓ CONFIGURED
@@ -498,83 +556,12 @@ CorrelationAnalyzer  ParameterizationAnalyzer  VariableTracker
 
 ---
 
-## 🎓 Use Cases & Benefits
-
-### Use Case 1: **Pre-Production Test Plan Audit**
-
-**Scenario:** You have a 200-sampler test plan ready for load testing, need to verify everything is parameterized.
-
-**Without Plugin:**
-- 4-6 hours manually opening each sampler
-- High risk of missing issues
-- No documentation trail
-
-**With Plugin:**
-```
-1. Tools → C/P Status - Detailed View [30 seconds]
-2. Scan Test Plan [10 seconds]
-3. Filter: "Parameterization Issues" [5 seconds]
-4. Export Report for audit trail [10 seconds]
-5. Fix 3 missing CSV configs [10 minutes]
-6. Rescan to verify [10 seconds]
-
-Total Time: 15 minutes
-Documentation: Complete audit report generated
-```
-
-**Benefit:** 95% time savings, zero missed issues
-
----
-
-### Use Case 2: **Debugging Test Failures**
-
-**Scenario:** Test is failing because variable `${orderId}` is empty in checkout flow.
-
-**Without Plugin:**
-- Search through 50 samplers to find where `orderId` is extracted
-- Check if it's used before it's extracted
-- No clear correlation chain visibility
-
-**With Plugin:**
-```
-1. Enable inline indicators
-2. Search for "checkout" sampler
-3. Right-click → View Correlation Variables
-4. See that ${orderId} is used but source shows "unknown"
-5. Tools → Find Elements → All Extractors
-6. Find the extractor is AFTER the usage (order wrong!)
-7. Drag extractor above checkout sampler
-8. Rescan - shows ✓ configured
-
-Total Time: 3 minutes
-```
-
-**Benefit:** Instant root cause identification
-
----
-
-### Use Case 3: **Test Plan Cleanup**
-
-**Scenario:** Test plan has grown to 300 samplers over 2 years, cluttered with unused extractors.
-
-**Without Plugin:**
-- No way to know which extractors are unused
-- Fear of breaking something by removing extractors
-
-**With Plugin:**
-```
-1. Tools → Find Elements → All Extractors
-2. For each extractor:
-   - Double-click variable name field
-   - If NO purple highlights = UNUSED
-   - Right-click → Delete
-3. Cleanup 15 unused extractors in 10 minutes
-
-Total Time: 10 minutes
-Risk: Zero (visual confirmation before deletion)
-```
-
-**Benefit:** Cleaner test plan, faster execution, easier maintenance
+**How to Test:**
+1. Install the plugin JAR
+2. Open `comprehensive-validation-test.jmx` in JMeter
+3. Enable: Tools → Show C/P Status in Tree
+4. Test each navigation scenario
+5. Verify all expected behaviors
 
 ---
 
@@ -582,109 +569,43 @@ Risk: Zero (visual confirmation before deletion)
 
 ### Correlation (Extractors)
 
-| Type | Support | Notes |
-|------|---------|-------|
-| JSON Extractor | ✅ Full | JSONPath expressions detected |
-| Regular Expression | ✅ Full | Regex patterns analyzed |
-| Boundary Extractor | ✅ Full | Left/right boundary detected |
-| XPath Extractor | ✅ Full | XPath 1.0 expressions |
-| XPath2 Extractor | ✅ Full | XPath 2.0 expressions |
-| CSS/JQuery Extractor | ✅ Full | CSS selectors detected |
-| JSR223 PostProcessor | ✅ Pattern | Detects `vars.put("name", ...)` |
-| BeanShell PostProcessor | ✅ Pattern | Detects variable assignments |
+| Type | Support | Variable Detection | Navigation | Notes |
+|------|---------|-------------------|------------|-------|
+| JSON Extractor | ✅ Full | ✅ Including underscore | ✅ Bidirectional | Semicolon-delimited lists supported |
+| Regular Expression | ✅ Full | ✅ Including underscore | ✅ Bidirectional | Single variable names |
+| Boundary Extractor | ✅ Full | ✅ Including underscore | ✅ Bidirectional | Single variable names |
+| XPath Extractor | ✅ Full | ✅ Including underscore | ✅ Bidirectional | XPath 1.0 expressions |
+| XPath2 Extractor | ✅ Full | ✅ Including underscore | ✅ Bidirectional | XPath 2.0 expressions |
+| CSS/JQuery Extractor | ✅ Full | ✅ Including underscore | ✅ Bidirectional | CSS selectors |
+| JSR223 PostProcessor | ✅ Pattern | ✅ Including underscore | ✅ Bidirectional | Detects `vars.put("name", ...)` |
+| JSR223 PreProcessor | ✅ Pattern | ✅ Including underscore | ✅ Bidirectional | Detects `vars.put("name", ...)` |
+| JSR223 Sampler | ✅ Pattern | ✅ Including underscore | ✅ Bidirectional | Detects `vars.put("name", ...)` |
+| BeanShell PostProcessor | ✅ Pattern | ✅ Including underscore | ✅ Bidirectional | Detects variable assignments |
+| BeanShell PreProcessor | ✅ Pattern | ✅ Including underscore | ✅ Bidirectional | Detects variable assignments |
+| BeanShell Sampler | ✅ Pattern | ✅ Including underscore | ✅ Bidirectional | Detects variable assignments |
 
 ### Parameterization (Sources)
 
-| Type | Support | Notes |
-|------|---------|-------|
-| CSV Data Set Config | ✅ Full | All variables detected |
-| User Defined Variables | ✅ Full | All UDVs tracked |
-| JMeter Functions | ✅ Full | `__Random, __UUID, __time`, etc. |
-| JSR223 PreProcessor | ✅ Pattern | Detects `vars.put` patterns |
-| Variable References | ✅ Full | `${varName}` usage tracked |
+| Type | Support | Variable Detection | Navigation | Notes |
+|------|---------|-------------------|------------|-------|
+| CSV Data Set Config | ✅ Full | ✅ Including underscore | ✅ Bidirectional | Comma-delimited lists supported |
+| User Defined Variables | ✅ Full | ✅ Including underscore | ✅ Bidirectional | All UDVs tracked |
+| JMeter Functions | ✅ Full | ✅ Standard functions | ❌ N/A | `__Random, __UUID, __time`, etc. |
+| JSR223 PreProcessor | ✅ Pattern | ✅ Including underscore | ✅ Bidirectional | Detects `vars.put` patterns |
+| Variable References | ✅ Full | ✅ Including underscore | ✅ Bidirectional | `${varName}` and `${_varName}` |
+| vars.get() in Scripts | ✅ Full | ✅ Including underscore | ✅ Usage tracking | Navigates to source extractor |
 
----
+### Variable Usage Detection
 
-## ⚠️ Known Limitations
+| Pattern | Support | Location | Example |
+|---------|---------|----------|---------|
+| `${varName}` | ✅ Full | All properties | Standard JMeter syntax |
+| `${_varName}` | ✅ Full | All properties | Underscore-prefixed |
+| `vars.get("varName")` | ✅ Full | JSR223 scripts | Navigation to source |
+| `vars.get("_varName")` | ✅ Full | JSR223 scripts | Underscore in scripts |
+| `vars.put("varName", ...)` | ✅ Full | JSR223 scripts | Creates new variable |
+| `vars.put("_varName", ...)` | ✅ Full | JSR223 scripts | Underscore creation |
 
-### Analysis Limitations
-
-1. **Static Analysis Only**
-   - Cannot detect runtime-generated variable names
-   - Example: `vars.put("var" + i, value)` not detected
-   - Workaround: Use manual override
-
-2. **JSR223 Script Complexity**
-   - Only detects simple `vars.put("name", ...)` patterns
-   - Complex Groovy logic may not be fully analyzed
-   - Workaround: Add comments or use manual override
-
-3. **Cross-Thread-Group Variables**
-   - Variables passed between thread groups via properties may not be tracked
-   - Workaround: Document in manual override comments
-
-4. **Conditional Logic**
-   - If/else blocks in extractors not analyzed
-   - May show false positives/negatives
-   - Workaround: Review conditional extractors manually
-
-### UI Limitations
-
-1. **Large Test Plans (1000+ samplers)**
-   - Initial scan may take 5-10 seconds
-   - Tree rendering may be slow
-   - Workaround: Use filters to reduce visible items
-
-2. **Manual Override Reset**
-   - Renaming samplers resets manual overrides
-   - Workaround: Avoid renaming after overrides, or reapply
-
----
-
-## 🔧 Configuration
-
-### Settings File
-
-Plugin creates `.jmx-status.json` next to your JMX file to store:
-- Manual status overrides
-- Per-element override reasons
-- Timestamp of last update
-
-**Example:**
-```json
-{
-  "/TestPlan/LoginTG/POST-Login": {
-    "correlationOverride": "CONFIGURED",
-    "parameterizationOverride": null,
-    "reason": "Uses JavaScript for dynamic token generation",
-    "lastModified": "2026-09-03T10:30:00Z"
-  }
-}
-```
-
-**Location:** Same directory as your `.jmx` file
-
-**Version Control:** Add `*.jmx-status.json` to `.gitignore` if overrides are personal
-
----
-
-## 🛠️ Development
-
-### Build & Test
-
-```bash
-# Full build with tests
-mvn clean test package
-
-# Skip tests (faster)
-mvn clean package -DskipTests
-
-# Run specific test
-mvn test -Dtest=CorrelationAnalyzerTest
-
-# Generate test coverage report
-mvn clean test jacoco:report
-```
 
 ### Project Structure
 
@@ -692,48 +613,47 @@ mvn clean test jacoco:report
 src/
 ├── main/java/com/performance/jmeter/correlation/
 │   ├── analyzer/               # Detection logic
-│   │   ├── CorrelationAnalyzer.java
-│   │   └── ParameterizationAnalyzer.java
+│   │   ├── CorrelationAnalyzer.java       # Extractor detection (JSON, Regex, XPath, etc.)
+│   │   └── ParameterizationAnalyzer.java  # CSV, variables, functions
 │   ├── model/                  # Data models
 │   │   ├── ElementStatus.java
 │   │   ├── ConfigurationStatus.java
 │   │   └── DetectedItem.java
 │   ├── scanner/                # Tree traversal
-│   │   ├── TestPlanScanner.java
+│   │   ├── TestPlanScanner.java           # Main scanner with variable tracking
 │   │   └── StatusAggregator.java
 │   ├── ui/                     # User interface
-│   │   ├── InlineStatusDecorator.java       # Tree indicators
+│   │   ├── InlineStatusDecorator.java     # Tree indicators + navigation
 │   │   ├── CorrelationParameterizationPanel.java  # Main window
-│   │   ├── EnhancedReportExporter.java      # Report generation
+│   │   ├── EnhancedReportExporter.java    # Report generation
 │   │   └── CorrelationParameterizationMenuCreator.java  # Menu integration
 │   └── util/                   # Utilities
 │       └── OverridePersistence.java
 └── test/
     ├── java/                   # Unit tests
     └── resources/              # Test JMX files
+        ├── sample-test-plan.jmx
+        └── comprehensive-validation-test.jmx
 ```
 
-### Adding New Extractor Support
+### Key Files for Implementation
 
-```java
-// In CorrelationAnalyzer.java
-public List<DetectedItem> detectExtractors(TestElement element) {
-    List<DetectedItem> items = new ArrayList<>();
-    
-    // Add your new extractor type
-    if (element.getClass().getName().contains("YourNewExtractor")) {
-        String varName = element.getPropertyAsString("your.var.property");
-        items.add(new DetectedItem(
-            "Your Extractor Type",
-            varName,
-            "XPath: " + element.getPropertyAsString("xpath"),
-            true
-        ));
-    }
-    
-    return items;
-}
-```
+| File | Lines | Key Implementation |
+|------|-------|-------------------|
+| `CorrelationAnalyzer.java` | 106-162 | XPath/XPath2/CSS extractor detection |
+| `TestPlanScanner.java` | 24, 293-331 | Variable usage pattern (underscore fix + vars.get) |
+| `ParameterizationAnalyzer.java` | 23 | Variable reference pattern (underscore fix) |
+| `InlineStatusDecorator.java` | 37, 844-896 | Navigation patterns (vars.get + underscore) |
+
+
+
+**Property Name Patterns:**
+- JSON: `JSONPostProcessor.referenceNames` (semicolon-delimited)
+- Regex: `RegexExtractor.refname`
+- XPath: `XPathExtractor.refname`
+- XPath2: `XPath2Extractor.refname`
+- CSS: `HtmlExtractor.refname`
+- Boundary: `BoundaryExtractor.refname`
 
 ---
 
@@ -759,17 +679,43 @@ We welcome contributions! Here's how:
 
 ## 📝 Changelog
 
-### v1.0.0-SNAPSHOT (Current)
+### v1.0.0-SNAPSHOT (Current - September 2026)
+
+**Major Features:**
 - ✅ Inline C/P status indicators in tree
 - ✅ Detailed analysis view with filters
-- ✅ Smart variable navigation (double-click)
+- ✅ Smart bidirectional variable navigation (usage↔source)
 - ✅ Variable usage highlighting (purple indicators)
 - ✅ Enhanced export report with variable tracking
 - ✅ Find elements (JSR223, extractors)
 - ✅ Manual status override with persistence
-- ✅ Correlation info dialog
+- ✅ Correlation info dialog with "Go To" navigation
 - ✅ Rescan functionality
-- ✅ Support for all major extractor types
+
+**Extractor Support:**
+- ✅ JSON Extractor / JSONPostProcessor
+- ✅ Regular Expression Extractor
+- ✅ Boundary Extractor
+- ✅ XPath Extractor (NEW)
+- ✅ XPath2 Extractor (NEW)
+- ✅ CSS/JQuery Extractor (HtmlExtractor) (NEW)
+- ✅ JSR223 PostProcessor with vars.put()
+- ✅ JSR223 PreProcessor with vars.put() (NEW)
+- ✅ JSR223 Sampler with vars.put() (NEW)
+- ✅ BeanShell variants (all types)
+
+**Variable Detection Enhancements:**
+- ✅ Underscore-prefixed variables fully supported (${_token}, ${_userId})
+- ✅ vars.get() detection in JSR223 scripts for navigation (NEW)
+- ✅ Semicolon-delimited variable lists in extractors (NEW)
+- ✅ Comma-delimited variable lists in CSV configs
+- ✅ All variable patterns detected in Correlation Info dialog
+
+**Bug Fixes:**
+- ✅ Fixed regex patterns to support underscore prefix (3 files)
+- ✅ Fixed JSR223 PostProcessor navigation
+- ✅ Fixed multiple variable names in extractor fields
+- ✅ Fixed vars.get() not tracked for usage detection
 
 ---
 
@@ -799,10 +745,24 @@ Apache License 2.0 - See [LICENSE](LICENSE) file for details
 
 ## 🎯 Roadmap
 
+### Completed ✅
+
+- [x] Inline status indicators in tree
+- [x] Detailed analysis view
+- [x] Smart variable navigation (bidirectional)
+- [x] Variable usage highlighting
+- [x] Enhanced export report
+- [x] Find elements functionality
+- [x] Manual status override
+- [x] XPath/XPath2/CSS extractor support
+- [x] Underscore variable support
+- [x] vars.get() navigation in JSR223
+- [x] Multiple variables in extractor names
+- [x] Complete JSR223 processor type coverage
+
 ### Planned Features
 
 - [ ] HTML export format with interactive charts
-- [ ] AI-powered correlation suggestions
 - [ ] Variable flow diagram visualization
 - [ ] Integration with JMeter Plugins Manager
 - [ ] Real-time test plan health monitoring
@@ -810,6 +770,7 @@ Apache License 2.0 - See [LICENSE](LICENSE) file for details
 - [ ] Export to Excel format
 - [ ] Custom extractor plugins support
 - [ ] Bulk edit operations
+- [ ] AI-powered correlation suggestions
 
 ### Future Enhancements
 
