@@ -7,10 +7,6 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.Arrays;
 
-/**
- * Standalone launcher for demo/testing outside JMeter.
- * Run this main class to see the plugin UI with sample data.
- */
 public class StandaloneLauncher {
 
     public static void main(String[] args) {
