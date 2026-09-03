@@ -9,10 +9,11 @@
     <version>1.0.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
-    <name>JMeter Correlation and Parameterization Plugin</name>
+    <name>Smart Variable Tracker and Navigator</name>
     <description>
-        A JMeter plugin that automatically detects dynamic values in recorded scripts
-        and applies correlation (extraction + substitution) for parameterization.
+        A JMeter plugin that provides intelligent variable tracking and navigation capabilities.
+        Track all variables from extraction to usage, navigate bidirectionally between sources
+        and usages, and visualize variable flow across your entire test plan.
     </description>
 
     <properties>
