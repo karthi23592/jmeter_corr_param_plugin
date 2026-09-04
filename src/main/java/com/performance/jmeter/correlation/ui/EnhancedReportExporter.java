@@ -3,6 +3,7 @@ package com.performance.jmeter.correlation.ui;
 import com.performance.jmeter.correlation.model.ConfigurationStatus;
 import com.performance.jmeter.correlation.model.DetectedItem;
 import com.performance.jmeter.correlation.model.ElementStatus;
+import com.performance.jmeter.correlation.util.VariablePatterns;
 import org.apache.jmeter.gui.GuiPackage;
 import org.apache.jmeter.gui.tree.JMeterTreeModel;
 import org.apache.jmeter.gui.tree.JMeterTreeNode;
@@ -11,13 +12,9 @@ import org.apache.jmeter.testelement.TestElement;
 import java.io.PrintWriter;
 import java.util.*;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 // Exports detailed report with variable tracking
 public class EnhancedReportExporter {
-
-    private static final Pattern VAR_PATTERN = Pattern.compile("\\$\\{([^}_][^}]*)}");
-    private static final Pattern VARS_PUT_PATTERN = Pattern.compile("vars\\.put\\s*\\(\\s*[\"']([^\"']+)[\"']");
 
     private Map<String, List<SamplerInfo>> varUsageMap = new HashMap<>();
     private Map<String, VariableSource> varSourceMap = new HashMap<>();
@@ -32,7 +29,8 @@ public class EnhancedReportExporter {
 
         try (PrintWriter writer = new PrintWriter(file)) {
             writer.println("===============================================");
-            writer.println("  CORRELATION & PARAMETERIZATION REPORT");
+            writer.println("  VARIABLE TRACKING & FLOW REPORT");
+            writer.println("  Smart Variable Tracker & Navigator");
             writer.println("===============================================");
             writer.println();
 
@@ -168,7 +166,7 @@ public class EnhancedReportExporter {
             }
         });
 
-        Matcher matcher = VAR_PATTERN.matcher(allProps.toString());
+        Matcher matcher = VariablePatterns.VARIABLE_USAGE.matcher(allProps.toString());
         while (matcher.find()) {
             String varName = matcher.group(1);
             if (!varName.startsWith("__") && !varName.contains("(")) {
@@ -195,7 +193,7 @@ public class EnhancedReportExporter {
         } else if (className.contains("JSR223") || className.contains("BeanShell")) {
             String script = te.getPropertyAsString("script");
             if (script != null && script.contains("vars.put")) {
-                Matcher matcher = VARS_PUT_PATTERN.matcher(script);
+                Matcher matcher = VariablePatterns.VARS_PUT.matcher(script);
                 while (matcher.find()) {
                     vars.add(matcher.group(1));
                 }
@@ -423,6 +421,7 @@ public class EnhancedReportExporter {
         String threadGroup;
         String samplerName;
         String path;
+
         SamplerInfo(String threadGroup, String samplerName, String path) {
             this.threadGroup = threadGroup;
             this.samplerName = samplerName;
