@@ -9,7 +9,7 @@
     <version>1.0.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
-    <name>Smart Variable Tracker and Navigator</name>
+    <name>Smart-Variable-Tracker-Navigator</name>
     <description>
         A JMeter plugin that provides intelligent variable tracking and navigation capabilities.
         Track all variables from extraction to usage, navigate bidirectionally between sources
