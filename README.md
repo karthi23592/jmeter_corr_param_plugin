@@ -1,5 +1,7 @@
 # Smart Variable Tracker Navigator
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
+
 A JMeter GUI plugin for navigating variable extraction and usage across a JMeter test plan. Navigate instantly from variable usage to source extractors and vice versa. Track all variables including underscore-prefixed names and JSR223 script variables. Save hours with instant navigation, visual flow tracking, and comprehensive variable inventory.
 
 
