@@ -1,6 +1,6 @@
-# Smart Variable Tracker & Navigator
+# Smart Variable Tracker Navigator
 
-A powerful JMeter GUI plugin that provides **intelligent variable tracking** and **bidirectional navigation** across your entire test plan. Navigate instantly from variable usage to source extractors and vice versa. Track all variables including underscore-prefixed names and JSR223 script variables. Save hours with instant navigation, visual flow tracking, and comprehensive variable inventory.
+A JMeter GUI plugin for navigating variable extraction and usage across a JMeter test plan. Navigate instantly from variable usage to source extractors and vice versa. Track all variables including underscore-prefixed names and JSR223 script variables. Save hours with instant navigation, visual flow tracking, and comprehensive variable inventory.
 
 
 ## 🎯 Problem Statement
@@ -45,35 +45,13 @@ Visual C/P status markers directly in the JMeter tree for instant health checks.
 
 **Pros:**
 - ✅ Instant visual feedback without opening samplers
-- ✅ Spot issues at a glance across entire test plan
+- ✅ Spot issues at a glance across entire JMeter test plan
 - ✅ Color-coded icons for quick identification
 - ✅ Works with Thread Groups, Controllers, and Samplers
 
 ---
 
-### 2. **Detailed Analysis View**
-Comprehensive dashboard with tree structure, details panel, and summary statistics.
-
-**How to use:**
-1. Go to **Tools → C/P Status - Detailed View**
-2. Click **"Scan Test Plan"** button
-3. Browse the tree to see detailed status
-4. Click any element to see details in right panel
-
-**What you get:**
-- **Left Panel**: Full tree with status indicators
-- **Center Panel**: Element details (extractors, variables, status)
-- **Right Panel**: Summary statistics (Thread Groups, Samplers, Coverage)
-
-**Pros:**
-- ✅ Complete overview of test plan health
-- ✅ Drill down to specific issues quickly
-- ✅ Statistics help prioritize work
-- ✅ Filter by status to focus on problems
-
----
-
-### 3. **Smart Bidirectional Variable Navigation**
+### 2. **Smart Bidirectional Variable Navigation**
 Navigate from usage to source AND from source to usage with double-click support for all variable patterns.
 
 **Usage → Source Navigation:**
@@ -115,7 +93,7 @@ Navigate from usage to source AND from source to usage with double-click support
 
 ---
 
-### 4. **Variable Usage Highlighting**
+### 3. **Variable Usage Highlighting**
 Highlight all samplers that use a specific variable with purple visual indicators.
 
 **How to use:**
@@ -150,7 +128,7 @@ Highlight all samplers that use a specific variable with purple visual indicator
 
 ---
 
-### 5. **Correlation Info Dialog**
+### 4. **Correlation Info Dialog**
 View all variables extracted and used by a sampler in one dialog with full underscore support.
 
 **How to use:**
@@ -175,8 +153,8 @@ View all variables extracted and used by a sampler in one dialog with full under
 
 ---
 
-### 6. **Find Elements**
-Quickly locate all JSR223 processors and extractors across the entire test plan.
+### 5. **Find Elements**
+Quickly locate all JSR223 processors and extractors across the entire JMeter test plan.
 
 **How to use:**
 1. Go to **Tools → Find Elements**
@@ -199,7 +177,7 @@ Quickly locate all JSR223 processors and extractors across the entire test plan.
 
 ---
 
-### 7. **Manual Status Override**
+### 6. **Manual Status Override**
 Override auto-detected status when you know better than automation.
 
 **How to use:**
@@ -226,7 +204,7 @@ Override auto-detected status when you know better than automation.
 
 ---
 
-### 8. **Enhanced Export Report**
+### 7. **Enhanced Export Report**
 Generate comprehensive reports with complete variable tracking and test plan structure.
 
 **How to use:**
@@ -301,36 +279,8 @@ Variable: ${username}
 - ✅ Includes underscore-prefixed variables
 - ✅ Shows JSR223 script variable usage
 
----
 
-### 9. **Filter & Search**
-Quickly find issues with powerful filtering and search.
-
-**How to use:**
-
-**Filter Options:**
-1. Open Detailed View
-2. Use **Filter** dropdown:
-   - **All** - Show everything
-   - **Correlation Issues** - Only items with correlation problems
-   - **Parameterization Issues** - Only param problems
-   - **Partial** - Items partially configured
-   - **Not Configured** - Items missing configuration
-
-**Search:**
-1. Enter sampler name in **Search** field
-2. Click **Go**
-3. Tree filters to matching items only
-
-**Pros:**
-- ✅ Focus on problems, ignore what's working
-- ✅ Quickly locate specific samplers
-- ✅ Prioritize work by issue type
-- ✅ Efficient for large test plans (100+ samplers)
-
----
-
-### 10. **Rescan Test Plan**
+### 08. **Rescan Test Plan**
 Refresh analysis after making changes without restarting JMeter.
 
 **How to use:**
