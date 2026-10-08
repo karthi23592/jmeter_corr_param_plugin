@@ -706,6 +706,25 @@ We welcome contributions! Here's how:
 - ✅ Fixed vars.get() not tracked for usage detection
 
 ---
+## What's new in v2.0.0
+
+### 1. Clear button for highlighted samplers
+- Previous version: highlighted samplers were cleared from the menu with Tools > Clear Variable Highlights.
+- This version: a Clear button is available in the GUI to clear the highlighted samplers directly.
+
+### 2. Search in Find Elements
+- Added a search feature to the Find Elements dialog, to filter the listed extractors and JSR223 processors.
+
+### 3. User counts on thread groups and test plan
+- Thread groups and the test plan now show user counts.
+- Supports the jp@gc (JMeter Plugins) thread groups as well as the standard thread group.
+
+## Installation
+Download `smart-variable-tracker-navigator-2.0.0.jar` from the assets below and copy it to `<JMETER_HOME>/lib/ext/`, then restart JMeter. Alternatively, install it from the JMeter Plugins Manager once the catalogue entry is updated.
+
+## Requirements
+- Java 11+
+- JMeter 5.6.3+
 
 ## 💬 Support
 
@@ -741,28 +760,6 @@ We welcome contributions! Here's how:
 - [x] vars.get() navigation in JSR223
 - [x] Multiple variables in extractor names
 - [x] Complete JSR223 processor type coverage
-- [x] Aggregate Report navigation with clickable icons
-- [x] View Results Tree navigation with clickable icons
-
-### Planned Features
-
-- [ ] HTML export format with interactive charts
-- [ ] Variable flow diagram visualization
-- [ ] Integration with JMeter Plugins Manager
-- [ ] Real-time test plan health monitoring
-- [ ] Hardcoded value detection heuristics
-- [ ] Export to Excel format
-- [ ] Custom extractor plugins support
-- [ ] Bulk edit operations
-- [ ] AI-powered correlation suggestions
-
-### Future Enhancements
-
-- Performance optimization for 1000+ sampler test plans
-- Cloud-based report sharing
-- Test plan comparison (before/after)
-- Integration with CI/CD pipelines
-- Mobile app for review on the go
 
 ---
 
