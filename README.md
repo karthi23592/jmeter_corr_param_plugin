@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 
-A JMeter GUI plugin for navigating variable extraction and usage across a JMeter test plan. Navigate instantly from variable usage to source extractors and vice versa. Track all variables including underscore-prefixed names and JSR223 script variables.
+A JMeter GUI plugin for navigating variable extraction and usage across a JMeter test plan. Navigate instantly from variable usage to source extractors and vice versa. Track all variables including underscore-prefixed names and JSR223 script variables. Save hours with instant navigation, visual flow tracking, and comprehensive variable inventory.
 
 
 ## 🎯 Problem Statement
@@ -16,6 +16,7 @@ In large-scale JMeter test plans with hundreds of samplers across multiple threa
 - **Underscore variables ignored**: Variables like `${_token}`, `${_sessionId}` not detected by standard tools
 - **JSR223 script variables invisible**: `vars.get()` and `vars.put()` in scripts not tracked for navigation
 - **No visibility**: No high-level view of overall test plan health
+- **Results analysis disconnect**: Cannot navigate from result listeners (Aggregate Report, View Results Tree) to actual samplers
 
 **Result**: Hours wasted on manual inspection, test failures in production, and maintenance headaches.
 
@@ -118,7 +119,8 @@ Highlight all samplers that use a specific variable with purple visual indicator
 3. All usages highlighted in purple (including vars.get() calls)
 
 **Clear highlights:**
-- Go to **Tools → Clear Variable Highlights**
+- **Toolbar Button**: Click the **purple clear button** (X icon) in the JMeter toolbar for quick access
+- **Menu Option**: Go to **Tools → Clear Variable Highlights**
 
 **Pros:**
 - ✅ Instantly see variable impact across test plan
@@ -282,7 +284,43 @@ Variable: ${username}
 - ✅ Shows JSR223 script variable usage
 
 
-### 08. **Rescan Test Plan**
+### 8. **Listener Navigation (Aggregate Report & View Results Tree)**
+Navigate directly from test result listeners to samplers in your test plan.
+
+**Aggregate Report Navigation:**
+1. Enable tree status: **Tools → Show C/P Status in Tree**
+2. Run your test and open the **Aggregate Report** listener
+3. In the report, each sampler name shows two clickable icons:
+   - **ⓘ icon** (blue) - Highlights all samplers with that name
+   - **➤ icon** (green) - Navigates to the first sampler
+4. Hover over icons to see tooltips
+
+**View Results Tree Navigation:**
+1. Enable tree status: **Tools → Show C/P Status in Tree**
+2. Run your test and open the **View Results Tree** listener
+3. Each sample result shows two clickable icons:
+   - **ⓘ icon** (blue) - Highlights all samplers with that name
+   - **➤ icon** (green) - Navigates to the sampler definition
+4. Perfect for debugging failed requests or slow responses
+
+**Features:**
+- Instant navigation from performance/error results to source samplers
+- Highlight multiple samplers with the same name across thread groups
+- Navigate through multiple instances with Previous/Next dialog
+- Hand cursor appears when hovering over icons
+- Works with both successful and failed sample results
+
+**Pros:**
+- ✅ Jump from performance issues directly to the sampler code
+- ✅ Debug failed requests instantly - click error → jump to sampler
+- ✅ No manual searching through test plan tree
+- ✅ Perfect for analyzing slow transactions or errors
+- ✅ Works with samplers across multiple thread groups
+- ✅ Visual feedback with purple highlighting
+
+---
+
+### 9. **Rescan Test Plan**
 Refresh analysis after making changes without restarting JMeter.
 
 **How to use:**
@@ -633,10 +671,13 @@ We welcome contributions! Here's how:
 - ✅ Detailed analysis view with filters
 - ✅ Smart bidirectional variable navigation (usage↔source)
 - ✅ Variable usage highlighting (purple indicators)
+- ✅ Clear variable highlights toolbar button (NEW)
 - ✅ Enhanced export report with variable tracking
 - ✅ Find elements (JSR223, extractors)
 - ✅ Manual status override with persistence
 - ✅ Correlation info dialog with "Go To" navigation
+- ✅ Aggregate Report navigation with clickable icons (NEW)
+- ✅ View Results Tree navigation with clickable icons (NEW)
 - ✅ Rescan functionality
 
 **Extractor Support:**
@@ -700,6 +741,8 @@ We welcome contributions! Here's how:
 - [x] vars.get() navigation in JSR223
 - [x] Multiple variables in extractor names
 - [x] Complete JSR223 processor type coverage
+- [x] Aggregate Report navigation with clickable icons
+- [x] View Results Tree navigation with clickable icons
 
 ### Planned Features
 

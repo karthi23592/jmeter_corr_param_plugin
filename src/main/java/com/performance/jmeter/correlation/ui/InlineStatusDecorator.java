@@ -45,6 +45,8 @@ public class InlineStatusDecorator {
     private boolean active = false;
     private Set<JTextComponent> enhancedTextComponents = new HashSet<>();
     private Set<JTable> enhancedTables = new HashSet<>();
+    private Set<JTree> enhancedResultsTrees = new HashSet<>(); // Track enhanced View Results Tree components
+    private javax.swing.Timer enhancementTimer; // Timer for continuous listener detection
     private JDialog currentCorrelationDialog = null; // Track currently open correlation dialog
     private Set<String> highlightedNodePaths = new HashSet<>(); // Nodes to highlight in purple
     private String currentHighlightedVariable = null; // Currently highlighted variable name
@@ -88,10 +90,41 @@ public class InlineStatusDecorator {
         active = true;
         scan();
         enhanceTextComponentsInGUI();
+
+        // Start a timer to check for new listeners (like View Results Tree) for 30 seconds only
+        // After that, tree selection listener will handle enhancement
+        final int[] scanCount = {0};
+        final int MAX_SCANS = 15; // 15 scans * 2 seconds = 30 seconds total
+
+        enhancementTimer = new javax.swing.Timer(2000, e -> {
+            if (active && scanCount[0] < MAX_SCANS) {
+                enhanceTextComponentsInGUI();
+                scanCount[0]++;
+
+                if (scanCount[0] >= MAX_SCANS) {
+                    // Stop timer after 30 seconds
+                    if (enhancementTimer != null) {
+                        enhancementTimer.stop();
+                        System.out.println("[Plugin] Enhancement timer stopped after 30 seconds - will now scan only on tree selection changes");
+                    }
+                }
+            }
+        });
+        enhancementTimer.setRepeats(true);
+        enhancementTimer.start();
+        System.out.println("[Plugin] Enhancement timer started - will scan for 30 seconds to detect listeners");
     }
 
     public void deactivate() {
         if (!active || jmeterTree == null) return;
+
+        // Stop the enhancement timer
+        if (enhancementTimer != null) {
+            enhancementTimer.stop();
+            enhancementTimer = null;
+            System.out.println("[Plugin] Enhancement timer stopped");
+        }
+
         jmeterTree.setCellRenderer(originalRenderer);
         jmeterTree.repaint();
         active = false;
@@ -149,7 +182,7 @@ public class InlineStatusDecorator {
     public void scan() {
         if (!active) return;
 
-        SwingWorker<ElementStatus, Void> worker = new SwingWorker<>() {
+        SwingWorker<ElementStatus, Void> worker = new SwingWorker<ElementStatus, Void>() {
             @Override
             protected ElementStatus doInBackground() {
                 JMeterTreeModel treeModel = getTreeModel();
@@ -181,6 +214,10 @@ public class InlineStatusDecorator {
                         if (jmeterTree != null) {
                             jmeterTree.repaint();
                         }
+
+                        // Update total users label in toolbar
+                        String totalUsers = getTotalUserCount();
+                        CorrelationParameterizationMenuCreator.updateTotalUsersLabel(totalUsers);
                     }
                 } catch (Exception ex) {
                     ex.printStackTrace();
@@ -616,10 +653,17 @@ public class InlineStatusDecorator {
             MainFrame mainFrame = guiPackage.getMainFrame();
             if (mainFrame == null) return;
 
-            // Find and enhance all text components
+            // Find and enhance all text components (silently, only log new detections)
+            int previousTreeCount = enhancedResultsTrees.size();
             enhanceTextComponentsRecursive(mainFrame.getContentPane());
+
+            // Only log when new trees are detected
+            if (enhancedResultsTrees.size() > previousTreeCount) {
+                System.out.println("[Plugin] Detected new listener trees. Total enhanced: " + enhancedResultsTrees.size());
+            }
         } catch (Exception e) {
-            // Ignore
+            System.err.println("[Plugin] Error during enhancement: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -635,7 +679,21 @@ public class InlineStatusDecorator {
                 JTable table = (JTable) comp;
                 if (!enhancedTables.contains(table)) {
                     addTableVariableNavigationListener(table);
+                    // DISABLED: Enable aggregate report navigation if this is an aggregate report table
+                    // if (isAggregateReportTable(table)) {
+                    //     addAggregateReportNavigationFeature(table);
+                    // }
                     enhancedTables.add(table);
+                }
+            } else if (comp instanceof JTree) {
+                JTree tree = (JTree) comp;
+                // Skip the main JMeter test plan tree
+                if (tree != jmeterTree && !enhancedResultsTrees.contains(tree)) {
+                    // DISABLED: Enable View Results Tree navigation if this is a View Results Tree
+                    // if (isViewResultsTree(tree)) {
+                    //     addViewResultsTreeNavigationFeature(tree);
+                    //     enhancedResultsTrees.add(tree);
+                    // }
                 }
             } else if (comp instanceof JScrollPane) {
                 JScrollPane scrollPane = (JScrollPane) comp;
@@ -644,7 +702,21 @@ public class InlineStatusDecorator {
                     JTable table = (JTable) viewport;
                     if (!enhancedTables.contains(table)) {
                         addTableVariableNavigationListener(table);
+                        // DISABLED: Enable aggregate report navigation if this is an aggregate report table
+                        // if (isAggregateReportTable(table)) {
+                        //     addAggregateReportNavigationFeature(table);
+                        // }
                         enhancedTables.add(table);
+                    }
+                } else if (viewport instanceof JTree) {
+                    JTree tree = (JTree) viewport;
+                    // Skip the main JMeter test plan tree
+                    if (tree != jmeterTree && !enhancedResultsTrees.contains(tree)) {
+                        // DISABLED: Enable View Results Tree navigation if this is a View Results Tree
+                        // if (isViewResultsTree(tree)) {
+                        //     addViewResultsTreeNavigationFeature(tree);
+                        //     enhancedResultsTrees.add(tree);
+                        // }
                     }
                 }
             }
@@ -967,16 +1039,26 @@ public class InlineStatusDecorator {
                 JOptionPane.WARNING_MESSAGE);
     }
 
+    // ========== Aggregate Report Navigation Feature ==========
+
+    /**
+     * Checks if a table is an Aggregate Report table by examining its column names.
+     */
     private boolean isAggregateReportTable(JTable table) {
-        if (table.getColumnCount() >= 3) {
-            String col0 = table.getColumnName(0);
-            String col1 = table.getColumnName(1);
-            return ("Label".equals(col0) && "# Samples".equals(col1)) ||
-                   ("Label".equals(col0) && "#Samples".equals(col1));
+        try {
+            if (table.getColumnCount() >= 3) {
+                String col0 = table.getColumnName(0);
+                String col1 = table.getColumnName(1);
+                // Aggregate Report has "Label" and "# Samples" as first columns
+                return ("Label".equals(col0) && "# Samples".equals(col1)) ||
+                       ("Label".equals(col0) && "#Samples".equals(col1));
+            }
+        } catch (Exception e) {
+            // Ignore
         }
         return false;
     }
-
+    
     private void addAggregateReportNavigationFeature(JTable table) {
         MouseAdapter aggregateReportListener = new MouseAdapter() {
             private FontMetrics fontMetrics = null;
@@ -1215,20 +1297,16 @@ public class InlineStatusDecorator {
 
             if (!pathsToHighlight.isEmpty()) {
                 TreePath[] paths = pathsToHighlight.toArray(new TreePath[0]);
+
+                // Highlight samplers in tree using selection (auto-clears when user clicks elsewhere)
+                // DON'T scroll or request focus - keep user on listener screen
                 jmeterTree.setSelectionPaths(paths);
 
-                jmeterTree.scrollPathToVisible(paths[0]);
-
+                // Log silently - no dialog popup
                 String message = matches.size() == 1 ?
-                        "Highlighted 1 sampler in the tree" :
-                        "Highlighted " + matches.size() + " samplers in the tree";
-
-                SwingUtilities.invokeLater(() -> {
-                    JOptionPane.showMessageDialog(jmeterTree,
-                            message,
-                            "Samplers Highlighted",
-                            JOptionPane.INFORMATION_MESSAGE);
-                });
+                        "Highlighted 1 sampler" :
+                        "Highlighted " + matches.size() + " samplers";
+                System.out.println("[Highlight] " + message + " - selection will auto-clear when you click elsewhere");
             }
         } else {
             JOptionPane.showMessageDialog(jmeterTree,
@@ -1459,6 +1537,216 @@ public class InlineStatusDecorator {
                 findNodesByName((JMeterTreeNode) child, name, matches);
             }
         }
+    }
+
+    // ========== View Results Tree Navigation Feature ==========
+
+    /**
+     * Checks if a JTree is a View Results Tree by examining its root node structure.
+     * View Results Tree uses SearchableTreeNode as its root node class.
+     */
+    private boolean isViewResultsTree(JTree tree) {
+        try {
+            if (tree == null || tree.getModel() == null) {
+                return false;
+            }
+
+            Object root = tree.getModel().getRoot();
+            if (root == null) {
+                return false;
+            }
+
+            // Check if root is SearchableTreeNode - View Results Tree uses this
+            String rootClassName = root.getClass().getName();
+
+            // View Results Tree uses org.apache.jmeter.visualizers.SearchableTreeNode
+            if (!rootClassName.contains("SearchableTreeNode")) {
+                return false;
+            }
+
+            // This is a View Results Tree!
+            String rootString = root.toString();
+            System.out.println("✓ [View Results Tree] Detected and enhanced! Root: " + rootString);
+            return true;
+
+        } catch (Exception e) {
+            // If any exception, it's not a View Results Tree
+            return false;
+        }
+    }
+
+    /**
+     * Adds navigation features to View Results Tree.
+     * Adds clickable icons next to each sample result for navigating to the sampler in test plan.
+     */
+    private void addViewResultsTreeNavigationFeature(JTree resultsTree) {
+        MouseAdapter resultsTreeListener = new MouseAdapter() {
+            private FontMetrics fontMetrics = null;
+
+            private FontMetrics getFontMetrics(JTree tree) {
+                if (fontMetrics == null) {
+                    fontMetrics = tree.getFontMetrics(tree.getFont());
+                }
+                return fontMetrics;
+            }
+
+            private boolean isOverIcons(MouseEvent e, int row, String labelText) {
+                if (row < 0 || labelText == null || labelText.isEmpty()) {
+                    return false;
+                }
+
+                Rectangle rowBounds = resultsTree.getRowBounds(row);
+                if (rowBounds == null) return false;
+
+                int mouseX = e.getX() - rowBounds.x;
+
+                // Calculate text width
+                FontMetrics fm = getFontMetrics(resultsTree);
+                int textWidth = fm.stringWidth(labelText);
+
+                // Account for tree node icon/expansion control (approximately 20 pixels)
+                int treeIconOffset = 20;
+
+                // Icons start after text with some padding (about 10 pixels)
+                int iconStartX = treeIconOffset + textWidth + 10;
+                // Icon zone is approximately 40 pixels wide (both icons together)
+                int iconEndX = iconStartX + 40;
+
+                return mouseX >= iconStartX && mouseX <= iconEndX;
+            }
+
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                int row = resultsTree.getRowForLocation(e.getX(), e.getY());
+                if (row >= 0) {
+                    TreePath path = resultsTree.getPathForRow(row);
+                    if (path != null && path.getLastPathComponent() != null) {
+                        String labelText = path.getLastPathComponent().toString();
+                        // Skip the root node
+                        if (!labelText.equals("Root") && isOverIcons(e, row, labelText)) {
+                            resultsTree.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                            return;
+                        }
+                    }
+                }
+                resultsTree.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                resultsTree.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
+            }
+
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getButton() != MouseEvent.BUTTON1 || e.getClickCount() != 1) {
+                    return;
+                }
+
+                int row = resultsTree.getRowForLocation(e.getX(), e.getY());
+                if (row < 0) {
+                    return;
+                }
+
+                TreePath path = resultsTree.getPathForRow(row);
+                if (path == null || path.getLastPathComponent() == null) {
+                    return;
+                }
+
+                String labelText = path.getLastPathComponent().toString();
+                // Skip the root node
+                if (labelText.equals("Root")) {
+                    return;
+                }
+
+                if (!isOverIcons(e, row, labelText)) {
+                    return;
+                }
+
+                Rectangle rowBounds = resultsTree.getRowBounds(row);
+                int clickX = e.getX() - rowBounds.x;
+
+                FontMetrics fm = getFontMetrics(resultsTree);
+                int textWidth = fm.stringWidth(labelText);
+                int treeIconOffset = 20;
+                int iconStartX = treeIconOffset + textWidth + 10;
+
+                int clickOffset = clickX - iconStartX;
+
+                // Extract the sampler name from the label
+                // View Results Tree format is typically: "samplerName" or "samplerName (response code)"
+                String samplerName = extractSamplerNameFromResultLabel(labelText);
+
+                if (clickOffset >= 0 && clickOffset <= 20) {
+                    // Clicked on ⓘ icon - highlight all samplers
+                    SwingUtilities.invokeLater(() -> highlightAllSamplersWithoutExpanding(samplerName));
+                } else if (clickOffset > 20 && clickOffset <= 40) {
+                    // Clicked on ➤ icon - navigate to sampler
+                    SwingUtilities.invokeLater(() -> navigateToSamplerByName(samplerName));
+                }
+            }
+        };
+
+        resultsTree.addMouseListener(resultsTreeListener);
+        resultsTree.addMouseMotionListener(resultsTreeListener);
+
+        // Add custom cell renderer to show navigation icons
+        SwingUtilities.invokeLater(() -> {
+            TreeCellRenderer existingRenderer = resultsTree.getCellRenderer();
+            if (existingRenderer == null) {
+                existingRenderer = new javax.swing.tree.DefaultTreeCellRenderer();
+            }
+
+            final TreeCellRenderer originalResultsRenderer = existingRenderer;
+
+            resultsTree.setCellRenderer(new TreeCellRenderer() {
+                @Override
+                public Component getTreeCellRendererComponent(JTree tree, Object value,
+                                                              boolean selected, boolean expanded,
+                                                              boolean leaf, int row, boolean hasFocus) {
+                    Component comp = originalResultsRenderer.getTreeCellRendererComponent(
+                            tree, value, selected, expanded, leaf, row, hasFocus);
+
+                    if (comp instanceof JLabel && value != null) {
+                        JLabel label = (JLabel) comp;
+                        String labelText = value.toString();
+
+                        // Don't add icons to the root node
+                        if (!labelText.equals("Root")) {
+                            String htmlText = "<html>" + escapeHtml(labelText) +
+                                             "&nbsp;&nbsp;&nbsp;<font color='#0066CC'><b>ⓘ</b></font>" +
+                                             "&nbsp;&nbsp;<font color='#28A745'><b>➤</b></font></html>";
+                            label.setText(htmlText);
+                            label.setToolTipText("Click ⓘ to highlight all | Click ➤ to navigate to sampler");
+                        }
+                    }
+
+                    return comp;
+                }
+            });
+
+            resultsTree.revalidate();
+            resultsTree.repaint();
+        });
+    }
+
+    /**
+     * Extracts the sampler name from a View Results Tree label.
+     * Handles various formats like "samplerName", "samplerName (200)", etc.
+     */
+    private String extractSamplerNameFromResultLabel(String label) {
+        if (label == null || label.trim().isEmpty()) {
+            return label;
+        }
+
+        // Remove response code and other metadata in parentheses
+        // Format: "samplerName (200)" or "samplerName (Failed)"
+        int parenIndex = label.indexOf('(');
+        if (parenIndex > 0) {
+            return label.substring(0, parenIndex).trim();
+        }
+
+        return label.trim();
     }
 
     private JTree findJMeterTree() {
@@ -2119,6 +2407,59 @@ public class InlineStatusDecorator {
         jmeterTree.scrollPathToVisible(targetPath);
     }
 
+    /**
+     * Shows a brief, auto-dismissing toast notification without blocking the user.
+     * Displays in the bottom-right corner for 3 seconds.
+     */
+    private void showToastNotification(String message) {
+        SwingUtilities.invokeLater(() -> {
+            try {
+                GuiPackage guiPackage = GuiPackage.getInstance();
+                if (guiPackage == null) return;
+                MainFrame mainFrame = guiPackage.getMainFrame();
+                if (mainFrame == null) return;
+
+                // Create a simple, non-modal toast panel
+                JPanel toastPanel = new JPanel();
+                toastPanel.setLayout(new BorderLayout(10, 10));
+                toastPanel.setBackground(new Color(51, 51, 51)); // Dark background
+                toastPanel.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(new Color(100, 100, 100), 1),
+                    BorderFactory.createEmptyBorder(12, 16, 12, 16)
+                ));
+
+                JLabel messageLabel = new JLabel(message);
+                messageLabel.setForeground(Color.WHITE);
+                messageLabel.setFont(new Font("SansSerif", Font.PLAIN, 13));
+                toastPanel.add(messageLabel, BorderLayout.CENTER);
+
+                // Create a non-modal window
+                final JWindow toast = new JWindow(mainFrame);
+                toast.setAlwaysOnTop(true);
+                toast.getContentPane().add(toastPanel);
+                toast.pack();
+
+                // Position in bottom-right corner
+                Dimension screenSize = mainFrame.getSize();
+                Point mainFrameLocation = mainFrame.getLocationOnScreen();
+                int x = mainFrameLocation.x + screenSize.width - toast.getWidth() - 20;
+                int y = mainFrameLocation.y + screenSize.height - toast.getHeight() - 60;
+                toast.setLocation(x, y);
+
+                toast.setVisible(true);
+
+                // Auto-dismiss after 3 seconds
+                javax.swing.Timer timer = new javax.swing.Timer(3000, e -> toast.dispose());
+                timer.setRepeats(false);
+                timer.start();
+
+            } catch (Exception e) {
+                // Fallback: print to console if toast fails
+                System.out.println("[Toast] " + message);
+            }
+        });
+    }
+
     private static String escapeHtml(String text) {
         if (text == null) return "";
         return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
@@ -2315,7 +2656,7 @@ public class InlineStatusDecorator {
                 usesParamVars = usesParameterizationVariables(node);
             }
 
-            String statusText = buildStatusText(nodeType, corrStatus, paramStatus, hasExtractor, hasManualCorrOverride, usesCorrelationVars, usesParamVars);
+            String statusText = buildStatusText(nodeType, corrStatus, paramStatus, hasExtractor, hasManualCorrOverride, usesCorrelationVars, usesParamVars, node);
 
             if (original instanceof JLabel) {
                 JLabel label = (JLabel) original;
@@ -2339,7 +2680,8 @@ public class InlineStatusDecorator {
 
         private String buildStatusText(String nodeType, ConfigurationStatus corrStatus,
                                        ConfigurationStatus paramStatus, boolean hasExtractor,
-                                       boolean hasManualCorrOverride, boolean usesCorrelationVars, boolean usesParamVars) {
+                                       boolean hasManualCorrOverride, boolean usesCorrelationVars, boolean usesParamVars,
+                                       JMeterTreeNode node) {
             StringBuilder sb = new StringBuilder();
 
             boolean isThreadGroup = "ThreadGroup".equals(nodeType);
@@ -2367,6 +2709,25 @@ public class InlineStatusDecorator {
                 sb.append("#999999'>P:\u2014");
             }
             sb.append("</font></b>");
+
+            // Add user count for ThreadGroups
+            if (isThreadGroup) {
+                String userCount = getThreadGroupUserCount(node);
+
+                // Check if thread group is disabled
+                TestElement te = node.getTestElement();
+                boolean isEnabled = (te != null && te.isEnabled());
+
+                if (isEnabled) {
+                    sb.append("&nbsp;&nbsp;<b><font color='#0066CC'>Users:");
+                    sb.append(escapeHtml(userCount));
+                    sb.append("</font></b>");
+                } else {
+                    sb.append("&nbsp;&nbsp;<b><font color='#999999'>Users:");
+                    sb.append(escapeHtml(userCount));
+                    sb.append("&nbsp;(disabled)</font></b>");
+                }
+            }
 
             return sb.toString();
         }
@@ -2487,60 +2848,123 @@ public class InlineStatusDecorator {
         String type = isPostProcessor ? "PostProcessors" : "PreProcessors";
         int totalCount = resultsByThreadGroup.values().stream().mapToInt(List::size).sum();
 
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        // Create main container
+        JPanel mainPanel = new JPanel(new BorderLayout(5, 5));
+        mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        JLabel header = new JLabel("<html><b>JSR223 " + type + " Found: " + totalCount + "</b></html>");
-        header.setFont(new Font("SansSerif", Font.BOLD, 14));
-        header.setAlignmentX(Component.LEFT_ALIGNMENT);
-        panel.add(header);
-        panel.add(Box.createVerticalStrut(10));
+        // Search panel at top
+        JPanel searchPanel = new JPanel(new BorderLayout(5, 0));
+        JLabel searchLabel = new JLabel("Search: ");
+        JTextField searchField = new JTextField();
+        searchField.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        searchPanel.add(searchLabel, BorderLayout.WEST);
+        searchPanel.add(searchField, BorderLayout.CENTER);
 
-        List<String> sortedThreadGroups = new ArrayList<>(resultsByThreadGroup.keySet());
-        sortedThreadGroups.sort(String.CASE_INSENSITIVE_ORDER);
+        // Results count label
+        JLabel countLabel = new JLabel("Showing " + totalCount + " of " + totalCount + " items");
+        countLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        countLabel.setForeground(Color.GRAY);
+        searchPanel.add(countLabel, BorderLayout.SOUTH);
 
-        for (String threadGroup : sortedThreadGroups) {
-            List<JSR223Element> elements = resultsByThreadGroup.get(threadGroup);
+        mainPanel.add(searchPanel, BorderLayout.NORTH);
 
-            JLabel tgLabel = new JLabel("<html><b>Thread Group: " + escapeHtml(threadGroup) + "</b> (" + elements.size() + ")</html>");
-            tgLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
-            tgLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-            panel.add(tgLabel);
-            panel.add(Box.createVerticalStrut(5));
+        // Results panel
+        JPanel resultsPanel = new JPanel();
+        resultsPanel.setLayout(new BoxLayout(resultsPanel, BoxLayout.Y_AXIS));
 
-            for (JSR223Element element : elements) {
-                JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
-                row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        // Build all results
+        List<JSR223Element> allElements = new ArrayList<>();
+        resultsByThreadGroup.values().forEach(allElements::addAll);
 
-                String samplerName = element.samplerNode.getName();
-                String jsr223Name = element.jsr223Node.getName();
+        // Create scroll pane
+        JScrollPane scrollPane = new JScrollPane(resultsPanel);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        mainPanel.add(scrollPane, BorderLayout.CENTER);
 
-                JLabel label = new JLabel("<html>&nbsp;&nbsp;• <b>" + escapeHtml(samplerName) + "</b>"
-                        + " → <i>" + escapeHtml(jsr223Name) + "</i></html>");
-                label.setFont(new Font("SansSerif", Font.PLAIN, 12));
-                row.add(label);
+        // Function to update results display
+        Runnable updateResults = () -> {
+            String searchText = searchField.getText().trim().toLowerCase();
+            resultsPanel.removeAll();
 
-                JButton goToBtn = new JButton("Go To ▸");
-                goToBtn.setFont(new Font("SansSerif", Font.PLAIN, 10));
-                goToBtn.setMargin(new Insets(2, 8, 2, 8));
-                final JMeterTreeNode targetNode = element.jsr223Node;
-                goToBtn.addActionListener(ev -> navigateToNode(targetNode));
-                row.add(goToBtn);
+            JLabel header = new JLabel("<html><b>JSR223 " + type + "</b></html>");
+            header.setFont(new Font("SansSerif", Font.BOLD, 14));
+            header.setAlignmentX(Component.LEFT_ALIGNMENT);
+            resultsPanel.add(header);
+            resultsPanel.add(Box.createVerticalStrut(10));
 
-                panel.add(row);
+            List<String> sortedThreadGroups = new ArrayList<>(resultsByThreadGroup.keySet());
+            sortedThreadGroups.sort(String.CASE_INSENSITIVE_ORDER);
+
+            int matchCount = 0;
+
+            for (String threadGroup : sortedThreadGroups) {
+                List<JSR223Element> elements = resultsByThreadGroup.get(threadGroup);
+                List<JSR223Element> filteredElements = new ArrayList<>();
+
+                for (JSR223Element element : elements) {
+                    String samplerName = element.samplerNode.getName().toLowerCase();
+                    String jsr223Name = element.jsr223Node.getName().toLowerCase();
+                    if (searchText.isEmpty() || samplerName.contains(searchText) || jsr223Name.contains(searchText)) {
+                        filteredElements.add(element);
+                        matchCount++;
+                    }
+                }
+
+                if (!filteredElements.isEmpty()) {
+                    JLabel tgLabel = new JLabel("<html><b>Thread Group: " + escapeHtml(threadGroup) + "</b> (" + filteredElements.size() + ")</html>");
+                    tgLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
+                    tgLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                    resultsPanel.add(tgLabel);
+                    resultsPanel.add(Box.createVerticalStrut(5));
+
+                    for (JSR223Element element : filteredElements) {
+                        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+                        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+                        String samplerName = element.samplerNode.getName();
+                        String jsr223Name = element.jsr223Node.getName();
+
+                        JLabel label = new JLabel("<html>&nbsp;&nbsp;• <b>" + escapeHtml(samplerName) + "</b>"
+                                + " → <i>" + escapeHtml(jsr223Name) + "</i></html>");
+                        label.setFont(new Font("SansSerif", Font.PLAIN, 12));
+                        row.add(label);
+
+                        JButton goToBtn = new JButton("Go To ▸");
+                        goToBtn.setFont(new Font("SansSerif", Font.PLAIN, 10));
+                        goToBtn.setMargin(new Insets(2, 8, 2, 8));
+                        final JMeterTreeNode targetNode = element.jsr223Node;
+                        goToBtn.addActionListener(ev -> navigateToNode(targetNode));
+                        row.add(goToBtn);
+
+                        resultsPanel.add(row);
+                    }
+
+                    resultsPanel.add(Box.createVerticalStrut(8));
+                }
             }
 
-            panel.add(Box.createVerticalStrut(8));
-        }
+            countLabel.setText("Showing " + matchCount + " of " + totalCount + " items");
 
-        JScrollPane scrollPane = new JScrollPane(panel);
-        scrollPane.setPreferredSize(new Dimension(600, 400));
+            resultsPanel.revalidate();
+            resultsPanel.repaint();
+        };
 
+        // Search field listener
+        searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { updateResults.run(); }
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { updateResults.run(); }
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { updateResults.run(); }
+        });
+
+        // Initial display
+        updateResults.run();
+
+        // Create resizable dialog
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(jmeterTree),
                 "Find JSR223 " + type, false);
-        dialog.setContentPane(scrollPane);
-        dialog.pack();
+        dialog.setContentPane(mainPanel);
+        dialog.setSize(700, 500);
+        dialog.setResizable(true);
         dialog.setLocationRelativeTo(jmeterTree);
         dialog.setVisible(true);
     }
@@ -2548,63 +2972,437 @@ public class InlineStatusDecorator {
     private void showExtractorsFindDialog(Map<String, List<ExtractorElement>> resultsByThreadGroup) {
         int totalCount = resultsByThreadGroup.values().stream().mapToInt(List::size).sum();
 
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        // Create main container
+        JPanel mainPanel = new JPanel(new BorderLayout(5, 5));
+        mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        JLabel header = new JLabel("<html><b>All Extractors Found: " + totalCount + "</b></html>");
-        header.setFont(new Font("SansSerif", Font.BOLD, 14));
-        header.setAlignmentX(Component.LEFT_ALIGNMENT);
-        panel.add(header);
-        panel.add(Box.createVerticalStrut(10));
+        // Search panel at top
+        JPanel searchPanel = new JPanel(new BorderLayout(5, 0));
+        JLabel searchLabel = new JLabel("Search: ");
+        JTextField searchField = new JTextField();
+        searchField.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        searchPanel.add(searchLabel, BorderLayout.WEST);
+        searchPanel.add(searchField, BorderLayout.CENTER);
 
-        List<String> sortedThreadGroups = new ArrayList<>(resultsByThreadGroup.keySet());
-        sortedThreadGroups.sort(String.CASE_INSENSITIVE_ORDER);
+        // Results count label
+        JLabel countLabel = new JLabel("Showing " + totalCount + " of " + totalCount + " items");
+        countLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        countLabel.setForeground(Color.GRAY);
+        searchPanel.add(countLabel, BorderLayout.SOUTH);
 
-        for (String threadGroup : sortedThreadGroups) {
-            List<ExtractorElement> elements = resultsByThreadGroup.get(threadGroup);
+        mainPanel.add(searchPanel, BorderLayout.NORTH);
 
-            JLabel tgLabel = new JLabel("<html><b>Thread Group: " + escapeHtml(threadGroup) + "</b> (" + elements.size() + ")</html>");
-            tgLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
-            tgLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-            panel.add(tgLabel);
-            panel.add(Box.createVerticalStrut(5));
+        // Results panel
+        JPanel resultsPanel = new JPanel();
+        resultsPanel.setLayout(new BoxLayout(resultsPanel, BoxLayout.Y_AXIS));
 
-            for (ExtractorElement element : elements) {
-                JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
-                row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        // Build all results
+        List<ExtractorElement> allElements = new ArrayList<>();
+        resultsByThreadGroup.values().forEach(allElements::addAll);
 
-                String samplerName = element.samplerNode.getName();
-                String extractorName = element.extractorNode.getName();
-                String extractorType = element.extractorType;
+        // Create scroll pane
+        JScrollPane scrollPane = new JScrollPane(resultsPanel);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        mainPanel.add(scrollPane, BorderLayout.CENTER);
 
-                JLabel label = new JLabel("<html>&nbsp;&nbsp;• <b>" + escapeHtml(samplerName) + "</b>"
-                        + " → <i>" + escapeHtml(extractorName) + "</i>"
-                        + " <font color='#666'>(" + extractorType + ")</font></html>");
-                label.setFont(new Font("SansSerif", Font.PLAIN, 12));
-                row.add(label);
+        // Function to update results display
+        Runnable updateResults = () -> {
+            String searchText = searchField.getText().trim().toLowerCase();
+            resultsPanel.removeAll();
 
-                JButton goToBtn = new JButton("Go To ▸");
-                goToBtn.setFont(new Font("SansSerif", Font.PLAIN, 10));
-                goToBtn.setMargin(new Insets(2, 8, 2, 8));
-                final JMeterTreeNode targetNode = element.extractorNode;
-                goToBtn.addActionListener(ev -> navigateToNode(targetNode));
-                row.add(goToBtn);
+            JLabel header = new JLabel("<html><b>All Extractors</b></html>");
+            header.setFont(new Font("SansSerif", Font.BOLD, 14));
+            header.setAlignmentX(Component.LEFT_ALIGNMENT);
+            resultsPanel.add(header);
+            resultsPanel.add(Box.createVerticalStrut(10));
 
-                panel.add(row);
+            List<String> sortedThreadGroups = new ArrayList<>(resultsByThreadGroup.keySet());
+            sortedThreadGroups.sort(String.CASE_INSENSITIVE_ORDER);
+
+            int matchCount = 0;
+
+            for (String threadGroup : sortedThreadGroups) {
+                List<ExtractorElement> elements = resultsByThreadGroup.get(threadGroup);
+                List<ExtractorElement> filteredElements = new ArrayList<>();
+
+                for (ExtractorElement element : elements) {
+                    String samplerName = element.samplerNode.getName().toLowerCase();
+                    String extractorName = element.extractorNode.getName().toLowerCase();
+                    String extractorType = element.extractorType.toLowerCase();
+                    if (searchText.isEmpty() || samplerName.contains(searchText) ||
+                        extractorName.contains(searchText) || extractorType.contains(searchText)) {
+                        filteredElements.add(element);
+                        matchCount++;
+                    }
+                }
+
+                if (!filteredElements.isEmpty()) {
+                    JLabel tgLabel = new JLabel("<html><b>Thread Group: " + escapeHtml(threadGroup) + "</b> (" + filteredElements.size() + ")</html>");
+                    tgLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
+                    tgLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                    resultsPanel.add(tgLabel);
+                    resultsPanel.add(Box.createVerticalStrut(5));
+
+                    for (ExtractorElement element : filteredElements) {
+                        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+                        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+                        String samplerName = element.samplerNode.getName();
+                        String extractorName = element.extractorNode.getName();
+                        String extractorType = element.extractorType;
+
+                        JLabel label = new JLabel("<html>&nbsp;&nbsp;• <b>" + escapeHtml(samplerName) + "</b>"
+                                + " → <i>" + escapeHtml(extractorName) + "</i>"
+                                + " <font color='#666'>(" + extractorType + ")</font></html>");
+                        label.setFont(new Font("SansSerif", Font.PLAIN, 12));
+                        row.add(label);
+
+                        JButton goToBtn = new JButton("Go To ▸");
+                        goToBtn.setFont(new Font("SansSerif", Font.PLAIN, 10));
+                        goToBtn.setMargin(new Insets(2, 8, 2, 8));
+                        final JMeterTreeNode targetNode = element.extractorNode;
+                        goToBtn.addActionListener(ev -> navigateToNode(targetNode));
+                        row.add(goToBtn);
+
+                        resultsPanel.add(row);
+                    }
+
+                    resultsPanel.add(Box.createVerticalStrut(8));
+                }
             }
 
-            panel.add(Box.createVerticalStrut(8));
-        }
+            countLabel.setText("Showing " + matchCount + " of " + totalCount + " items");
 
-        JScrollPane scrollPane = new JScrollPane(panel);
-        scrollPane.setPreferredSize(new Dimension(650, 450));
+            resultsPanel.revalidate();
+            resultsPanel.repaint();
+        };
 
+        // Search field listener
+        searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { updateResults.run(); }
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { updateResults.run(); }
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { updateResults.run(); }
+        });
+
+        // Initial display
+        updateResults.run();
+
+        // Create resizable dialog
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(jmeterTree),
                 "Find All Extractors", false);
-        dialog.setContentPane(scrollPane);
-        dialog.pack();
+        dialog.setContentPane(mainPanel);
+        dialog.setSize(750, 550);
+        dialog.setResizable(true);
         dialog.setLocationRelativeTo(jmeterTree);
         dialog.setVisible(true);
+    }
+
+    /**
+     * Gets the user count from a ThreadGroup node.
+     * Supports standard ThreadGroup and jp@gc plugin thread groups.
+     * Resolves variables from User Defined Variables and returns the actual value.
+     */
+    private String getThreadGroupUserCount(JMeterTreeNode node) {
+        if (node == null) return "?";
+
+        TestElement te = node.getTestElement();
+        if (te == null) return "?";
+
+        String className = te.getClass().getName();
+        if (!className.contains("ThreadGroup")) return "?";
+
+        try {
+            String numThreads = null;
+
+            // Handle jp@gc - Ultimate Thread Group
+            if (className.contains("UltimateThreadGroup")) {
+                numThreads = getUltimateThreadGroupCount(te);
+            }
+            // Handle jp@gc - Stepping Thread Group
+            else if (className.contains("SteppingThreadGroup")) {
+                numThreads = te.getPropertyAsString("ThreadGroup.num_threads");
+            }
+            // Handle jp@gc - Concurrency Thread Group
+            else if (className.contains("ConcurrencyThreadGroup")) {
+                numThreads = te.getPropertyAsString("TargetLevel");
+            }
+            // Handle jp@gc - Arrivals Thread Group
+            else if (className.contains("ArrivalsThreadGroup")) {
+                numThreads = te.getPropertyAsString("ConcurrencyLimit");
+            }
+            // Handle standard Thread Group
+            else {
+                numThreads = te.getPropertyAsString("ThreadGroup.num_threads");
+            }
+
+            if (numThreads == null || numThreads.trim().isEmpty()) {
+                return "?";
+            }
+
+            // Resolve variable if it's parameterized
+            String resolved = resolveVariable(numThreads.trim());
+            return resolved;
+        } catch (Exception e) {
+            return "?";
+        }
+    }
+
+    /**
+     * Extracts the maximum thread count from Ultimate Thread Group schedule.
+     */
+    private String getUltimateThreadGroupCount(TestElement te) {
+        try {
+            // Try method 1: Get from collection property (most reliable)
+            org.apache.jmeter.testelement.property.JMeterProperty prop = te.getProperty("ultimatethreadgroupdata");
+
+            if (prop instanceof org.apache.jmeter.testelement.property.CollectionProperty) {
+                org.apache.jmeter.testelement.property.CollectionProperty collectionProp =
+                    (org.apache.jmeter.testelement.property.CollectionProperty) prop;
+
+                int maxThreads = 0;
+
+                // Iterate through each row in the schedule
+                for (org.apache.jmeter.testelement.property.JMeterProperty rowProp : collectionProp) {
+                    if (rowProp instanceof org.apache.jmeter.testelement.property.CollectionProperty) {
+                        org.apache.jmeter.testelement.property.CollectionProperty row =
+                            (org.apache.jmeter.testelement.property.CollectionProperty) rowProp;
+
+                        // First element in row is thread count
+                        if (row.size() > 0) {
+                            try {
+                                org.apache.jmeter.testelement.property.JMeterProperty firstCol = row.get(0);
+                                String threadsStr = firstCol.getStringValue();
+
+                                // Try to resolve if it's a variable
+                                threadsStr = resolveVariable(threadsStr);
+
+                                int threads = Integer.parseInt(threadsStr);
+                                if (threads > maxThreads) {
+                                    maxThreads = threads;
+                                }
+                            } catch (Exception e) {
+                                // Skip invalid entries
+                            }
+                        }
+                    }
+                }
+
+                if (maxThreads > 0) {
+                    return String.valueOf(maxThreads);
+                }
+            }
+
+            // Try method 2: Get as string and parse
+            String scheduleData = te.getPropertyAsString("ultimatethreadgroupdata");
+            if (scheduleData != null && !scheduleData.isEmpty() && !scheduleData.equals("null")) {
+                int maxThreads = 0;
+                String[] rows = scheduleData.split("\n");
+                for (String row : rows) {
+                    if (row.trim().isEmpty()) continue;
+                    String[] parts = row.split(",");
+                    if (parts.length > 0) {
+                        try {
+                            String threadsStr = parts[0].trim();
+                            threadsStr = resolveVariable(threadsStr);
+                            int threads = Integer.parseInt(threadsStr);
+                            if (threads > maxThreads) {
+                                maxThreads = threads;
+                            }
+                        } catch (NumberFormatException e) {
+                            // Skip invalid rows
+                        }
+                    }
+                }
+                if (maxThreads > 0) {
+                    return String.valueOf(maxThreads);
+                }
+            }
+
+            // Try method 3: Look for "load" property (alternative property name)
+            String load = te.getPropertyAsString("load");
+            if (load != null && !load.isEmpty() && !load.equals("null")) {
+                return resolveVariable(load);
+            }
+
+        } catch (Exception e) {
+            System.err.println("[Plugin] Error reading Ultimate Thread Group: " + e.getMessage());
+        }
+
+        // Last resort: try standard property
+        String standard = te.getPropertyAsString("ThreadGroup.num_threads");
+        if (standard != null && !standard.isEmpty() && !standard.equals("null")) {
+            return resolveVariable(standard);
+        }
+
+        return "?";
+    }
+
+    /**
+     * Calculates total user count across all thread groups.
+     * Variables are resolved from User Defined Variables, and totals are summed.
+     * If variables cannot be resolved, they are shown in the total.
+     */
+    public String getTotalUserCount() {
+        JMeterTreeModel treeModel = getTreeModel();
+        if (treeModel == null) return "N/A";
+
+        JMeterTreeNode root = (JMeterTreeNode) treeModel.getRoot();
+        if (root == null) return "N/A";
+
+        int[] numericTotal = {0}; // Use array to allow modification in recursive method
+        List<String> unresolvedVariables = new ArrayList<>();
+
+        collectUserCounts(root, numericTotal, unresolvedVariables);
+
+        // Build result string
+        StringBuilder result = new StringBuilder();
+
+        // Show numeric total
+        if (numericTotal[0] > 0 || unresolvedVariables.isEmpty()) {
+            result.append(numericTotal[0]);
+        }
+
+        // Show unresolved variables (these couldn't be looked up from UDV)
+        if (!unresolvedVariables.isEmpty()) {
+            if (result.length() > 0) {
+                result.append(" + ");
+            }
+            result.append(String.join(" + ", unresolvedVariables));
+        }
+
+        if (result.length() == 0) {
+            return "0";
+        }
+
+        return result.toString();
+    }
+
+    /**
+     * Recursively collects user counts from all thread groups.
+     * Variables are resolved before counting.
+     * Only counts ENABLED thread groups - disabled thread groups are excluded.
+     */
+    private void collectUserCounts(JMeterTreeNode node, int[] numericTotal, List<String> parameterizedValues) {
+        if (node == null) return;
+
+        TestElement te = node.getTestElement();
+        if (te != null) {
+            String className = te.getClass().getName();
+            if (className.contains("ThreadGroup")) {
+                // Check if thread group is enabled
+                boolean isEnabled = te.isEnabled();
+
+                if (isEnabled) {
+                    String userCount = getThreadGroupUserCount(node);
+                    if (!"?".equals(userCount)) {
+                        // Try to parse as integer (already resolved by getThreadGroupUserCount)
+                        try {
+                            numericTotal[0] += Integer.parseInt(userCount);
+                        } catch (NumberFormatException e) {
+                            // Still parameterized (couldn't resolve) - show as unresolved
+                            // This happens when variable is not in UDV or is from CSV at runtime
+                            if (!parameterizedValues.contains(userCount)) {
+                                parameterizedValues.add(userCount);
+                            }
+                        }
+                    }
+                }
+                // If disabled, skip this thread group entirely from the total count
+            }
+        }
+
+        // Recurse to children
+        Enumeration<?> children = node.children();
+        while (children.hasMoreElements()) {
+            Object child = children.nextElement();
+            if (child instanceof JMeterTreeNode) {
+                collectUserCounts((JMeterTreeNode) child, numericTotal, parameterizedValues);
+            }
+        }
+    }
+
+    /**
+     * Resolves a variable reference to its actual value.
+     * If the value contains ${varName}, looks up varName in User Defined Variables.
+     * Returns the resolved value, or the original if not found.
+     */
+    private String resolveVariable(String value) {
+        if (value == null || !value.contains("${")) {
+            return value;
+        }
+
+        // Build variable map from test plan
+        Map<String, String> variableMap = buildVariableMap();
+
+        // Extract variable name from ${varName}
+        Matcher matcher = VAR_USAGE_PATTERN.matcher(value);
+        if (matcher.find()) {
+            String varName = matcher.group(1);
+            String resolvedValue = variableMap.get(varName);
+            if (resolvedValue != null) {
+                return resolvedValue;
+            }
+        }
+
+        // Return original if not resolved
+        return value;
+    }
+
+    /**
+     * Builds a map of all variables and their values from User Defined Variables and CSV configs.
+     */
+    private Map<String, String> buildVariableMap() {
+        Map<String, String> variableMap = new HashMap<>();
+
+        JMeterTreeModel treeModel = getTreeModel();
+        if (treeModel == null) return variableMap;
+
+        JMeterTreeNode root = (JMeterTreeNode) treeModel.getRoot();
+        if (root == null) return variableMap;
+
+        collectVariables(root, variableMap);
+        return variableMap;
+    }
+
+    /**
+     * Recursively collects all variables from User Defined Variables and CSV configs.
+     */
+    private void collectVariables(JMeterTreeNode node, Map<String, String> variableMap) {
+        if (node == null) return;
+
+        TestElement te = node.getTestElement();
+        if (te != null) {
+            String className = te.getClass().getName();
+
+            // Collect from User Defined Variables (Arguments)
+            if (className.contains("Arguments") && !className.contains("Sampler")) {
+                try {
+                    Arguments args = (Arguments) te;
+                    Map<String, String> argMap = args.getArgumentsAsMap();
+                    variableMap.putAll(argMap);
+                } catch (Exception e) {
+                    // Not an Arguments type or cast failed
+                }
+            }
+
+            // Collect from CSV Data Set Config
+            if (className.contains("CSVDataSet")) {
+                String varNames = te.getPropertyAsString("variableNames");
+                if (varNames != null && !varNames.isEmpty()) {
+                    // For CSV, we don't have actual values at design time
+                    // So we just mark them as "CSV" or skip them
+                    // User will need to use hardcoded values or UDV for resolution
+                }
+            }
+        }
+
+        // Recurse to children
+        Enumeration<?> children = node.children();
+        while (children.hasMoreElements()) {
+            Object child = children.nextElement();
+            if (child instanceof JMeterTreeNode) {
+                collectVariables((JMeterTreeNode) child, variableMap);
+            }
+        }
     }
 }

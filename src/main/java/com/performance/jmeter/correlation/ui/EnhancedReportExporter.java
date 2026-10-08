@@ -3,7 +3,9 @@ package com.performance.jmeter.correlation.ui;
 import com.performance.jmeter.correlation.model.ConfigurationStatus;
 import com.performance.jmeter.correlation.model.DetectedItem;
 import com.performance.jmeter.correlation.model.ElementStatus;
+import com.performance.jmeter.correlation.scanner.StatusAggregator;
 import com.performance.jmeter.correlation.util.VariablePatterns;
+import org.apache.jmeter.config.Arguments;
 import org.apache.jmeter.gui.GuiPackage;
 import org.apache.jmeter.gui.tree.JMeterTreeModel;
 import org.apache.jmeter.gui.tree.JMeterTreeNode;
@@ -12,16 +14,20 @@ import org.apache.jmeter.testelement.TestElement;
 import java.io.PrintWriter;
 import java.util.*;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 // Exports detailed report with variable tracking
 public class EnhancedReportExporter {
 
+    private static final Pattern VAR_USAGE_PATTERN = Pattern.compile("\\$\\{([^}]+)}");
+
     private Map<String, List<SamplerInfo>> varUsageMap = new HashMap<>();
     private Map<String, VariableSource> varSourceMap = new HashMap<>();
-    private int totalThreadGroups = 0;
-    private int totalSamplers = 0;
+    private Map<String, String> threadGroupUserCounts = new HashMap<>();
+    private Map<String, String> variableMap = new HashMap<>();
     private int totalExtractors = 0;
     private int totalParamSources = 0;
+    private String totalUsers = "N/A";
 
     public void exportToDetailedReport(java.io.File file, ElementStatus root) throws Exception {
         // TODO: add support for HTML export format
@@ -55,8 +61,8 @@ public class EnhancedReportExporter {
     private void analyzeVariables() {
         varUsageMap.clear();
         varSourceMap.clear();
-        totalThreadGroups = 0;
-        totalSamplers = 0;
+        threadGroupUserCounts.clear();
+        variableMap.clear();
         totalExtractors = 0;
         totalParamSources = 0;
 
@@ -68,7 +74,12 @@ public class EnhancedReportExporter {
                     JMeterTreeNode rootNode = (JMeterTreeNode) treeModel.getRoot();
                     if (rootNode.getChildCount() > 0) {
                         JMeterTreeNode testPlanNode = (JMeterTreeNode) rootNode.getChildAt(0);
+                        // First pass: collect variables from UDV
+                        collectVariablesFromTree(testPlanNode);
+                        // Second pass: scan for variables and user counts
                         scanNodeForVariables(testPlanNode, "");
+                        // Calculate total users
+                        calculateTotalUsers();
                     }
                 }
             }
@@ -88,16 +99,20 @@ public class EnhancedReportExporter {
         String nodeName = node.getName();
         String nodeType = getNodeType(className);
 
-        // Track thread groups
+        // Track thread groups (for context and user counts)
         if (className.contains("ThreadGroup")) {
-            totalThreadGroups++;
             threadGroupName = nodeName;
+            // Only count enabled thread groups
+            if (te.isEnabled()) {
+                // Get user count for this thread group
+                String userCount = getThreadGroupUserCount(te);
+                threadGroupUserCounts.put(nodeName, userCount);
+            }
+            // If disabled, don't add to user count map
         }
 
-        // Track samplers
-        if (nodeType.equals("Sampler")) {
-            totalSamplers++;
-
+        // Track sampler variables
+        if (className.contains("Sampler")) {
             // Find variables used by this sampler
             Set<String> usedVars = findVariablesUsedBy(te);
             for (String varName : usedVars) {
@@ -243,35 +258,20 @@ public class EnhancedReportExporter {
     }
 
     private void writeSummary(PrintWriter writer, ElementStatus root) {
-        int configured = 0;
-        int notConfigured = 0;
-        int partial = 0;
-
-        countStatus(root, new int[]{configured, notConfigured, partial});
+        // Use the same counting logic as the UI
+        StatusAggregator.ScanSummary summary = StatusAggregator.computeSummary(root);
 
         writer.println("SUMMARY STATISTICS:");
         writer.println("-------------------");
-        writer.println("Thread Groups: " + totalThreadGroups);
-        writer.println("HTTP Samplers: " + totalSamplers);
+        writer.println("Thread Groups: " + summary.totalThreadGroups);
+        writer.println("Total Users: " + totalUsers);
+        writer.println("HTTP Samplers: " + summary.totalSamplers);
         writer.println("Extractors: " + totalExtractors);
         writer.println("Parameterization Sources: " + totalParamSources);
         writer.println("Total Variables Tracked: " + varSourceMap.size());
         writer.println();
         writer.println("Correlation Status:");
-        writer.println("  Configured: " + configured);
-        writer.println("  Partial: " + partial);
-        writer.println("  Not Configured: " + notConfigured);
-    }
-
-    private void countStatus(ElementStatus element, int[] counts) {
-        ConfigurationStatus status = element.getEffectiveCorrelationStatus();
-        if (status == ConfigurationStatus.CONFIGURED) counts[0]++;
-        else if (status == ConfigurationStatus.NOT_CONFIGURED) counts[1]++;
-        else if (status == ConfigurationStatus.PARTIAL) counts[2]++;
-
-        for (ElementStatus child : element.getChildren()) {
-            countStatus(child, counts);
-        }
+        writer.println("  Configured: " + summary.correlationConfigured);
     }
 
     private void writeTreeStructure(PrintWriter writer, ElementStatus element, int level) {
@@ -284,7 +284,17 @@ public class EnhancedReportExporter {
         // Add C/P status indicators
         String corrStatus = getStatusIndicator(element.getEffectiveCorrelationStatus());
         String paramStatus = getStatusIndicator(element.getEffectiveParameterizationStatus());
-        writer.println(" C:" + corrStatus + " P:" + paramStatus);
+        writer.print(" C:" + corrStatus + " P:" + paramStatus);
+
+        // Add user count for ThreadGroups
+        if ("ThreadGroup".equals(element.getElementType())) {
+            String userCount = threadGroupUserCounts.get(element.getElementName());
+            if (userCount != null && !userCount.equals("?")) {
+                writer.print(" Users:" + userCount);
+            }
+        }
+
+        writer.println();
 
         // If it's a sampler, show details about variables
         if (element.getElementType().equals("HTTPSampler") || element.getElementType().equals("Sampler")) {
@@ -398,6 +408,231 @@ public class EnhancedReportExporter {
             case NOT_APPLICABLE: return "—";
             default: return "?";
         }
+    }
+
+    /**
+     * Collects variables from User Defined Variables across the test plan.
+     */
+    private void collectVariablesFromTree(JMeterTreeNode node) {
+        if (node == null) return;
+
+        TestElement te = node.getTestElement();
+        if (te != null) {
+            String className = te.getClass().getName();
+            // Collect from User Defined Variables (Arguments)
+            if (className.contains("Arguments") && !className.contains("Sampler")) {
+                try {
+                    Arguments args = (Arguments) te;
+                    Map<String, String> argMap = args.getArgumentsAsMap();
+                    variableMap.putAll(argMap);
+                } catch (Exception e) {
+                    // Not an Arguments type or cast failed
+                }
+            }
+        }
+
+        // Recurse to children
+        Enumeration<?> children = node.children();
+        while (children.hasMoreElements()) {
+            Object child = children.nextElement();
+            if (child instanceof JMeterTreeNode) {
+                collectVariablesFromTree((JMeterTreeNode) child);
+            }
+        }
+    }
+
+    /**
+     * Gets the user count from a ThreadGroup test element.
+     * Supports standard ThreadGroup and jp@gc plugin thread groups.
+     * Resolves variables from User Defined Variables if possible.
+     */
+    private String getThreadGroupUserCount(TestElement te) {
+        if (te == null) return "?";
+
+        String className = te.getClass().getName();
+        if (!className.contains("ThreadGroup")) return "?";
+
+        try {
+            String numThreads = null;
+
+            // Handle jp@gc - Ultimate Thread Group
+            if (className.contains("UltimateThreadGroup")) {
+                numThreads = getUltimateThreadGroupCount(te);
+            }
+            // Handle jp@gc - Stepping Thread Group
+            else if (className.contains("SteppingThreadGroup")) {
+                numThreads = te.getPropertyAsString("ThreadGroup.num_threads");
+            }
+            // Handle jp@gc - Concurrency Thread Group
+            else if (className.contains("ConcurrencyThreadGroup")) {
+                numThreads = te.getPropertyAsString("TargetLevel");
+            }
+            // Handle jp@gc - Arrivals Thread Group
+            else if (className.contains("ArrivalsThreadGroup")) {
+                numThreads = te.getPropertyAsString("ConcurrencyLimit");
+            }
+            // Handle standard Thread Group
+            else {
+                numThreads = te.getPropertyAsString("ThreadGroup.num_threads");
+            }
+
+            if (numThreads == null || numThreads.trim().isEmpty()) {
+                return "?";
+            }
+
+            // Resolve variable if it's parameterized
+            return resolveVariable(numThreads.trim());
+        } catch (Exception e) {
+            return "?";
+        }
+    }
+
+    /**
+     * Extracts the maximum thread count from Ultimate Thread Group schedule.
+     */
+    private String getUltimateThreadGroupCount(TestElement te) {
+        try {
+            // Try method 1: Get from collection property (most reliable)
+            org.apache.jmeter.testelement.property.JMeterProperty prop = te.getProperty("ultimatethreadgroupdata");
+
+            if (prop instanceof org.apache.jmeter.testelement.property.CollectionProperty) {
+                org.apache.jmeter.testelement.property.CollectionProperty collectionProp =
+                    (org.apache.jmeter.testelement.property.CollectionProperty) prop;
+
+                int maxThreads = 0;
+
+                // Iterate through each row in the schedule
+                for (org.apache.jmeter.testelement.property.JMeterProperty rowProp : collectionProp) {
+                    if (rowProp instanceof org.apache.jmeter.testelement.property.CollectionProperty) {
+                        org.apache.jmeter.testelement.property.CollectionProperty row =
+                            (org.apache.jmeter.testelement.property.CollectionProperty) rowProp;
+
+                        // First element in row is thread count
+                        if (row.size() > 0) {
+                            try {
+                                org.apache.jmeter.testelement.property.JMeterProperty firstCol = row.get(0);
+                                String threadsStr = firstCol.getStringValue();
+
+                                // Try to resolve if it's a variable
+                                threadsStr = resolveVariable(threadsStr);
+
+                                int threads = Integer.parseInt(threadsStr);
+                                if (threads > maxThreads) {
+                                    maxThreads = threads;
+                                }
+                            } catch (Exception e) {
+                                // Skip invalid entries
+                            }
+                        }
+                    }
+                }
+
+                if (maxThreads > 0) {
+                    return String.valueOf(maxThreads);
+                }
+            }
+
+            // Try method 2: Get as string and parse
+            String scheduleData = te.getPropertyAsString("ultimatethreadgroupdata");
+            if (scheduleData != null && !scheduleData.isEmpty() && !scheduleData.equals("null")) {
+                int maxThreads = 0;
+                String[] rows = scheduleData.split("\n");
+                for (String row : rows) {
+                    if (row.trim().isEmpty()) continue;
+                    String[] parts = row.split(",");
+                    if (parts.length > 0) {
+                        try {
+                            String threadsStr = parts[0].trim();
+                            threadsStr = resolveVariable(threadsStr);
+                            int threads = Integer.parseInt(threadsStr);
+                            if (threads > maxThreads) {
+                                maxThreads = threads;
+                            }
+                        } catch (NumberFormatException e) {
+                            // Skip invalid rows
+                        }
+                    }
+                }
+                if (maxThreads > 0) {
+                    return String.valueOf(maxThreads);
+                }
+            }
+
+            // Try method 3: Look for "load" property (alternative property name)
+            String load = te.getPropertyAsString("load");
+            if (load != null && !load.isEmpty() && !load.equals("null")) {
+                return resolveVariable(load);
+            }
+
+        } catch (Exception e) {
+            // Fallback to standard property
+        }
+
+        // Last resort: try standard property
+        String standard = te.getPropertyAsString("ThreadGroup.num_threads");
+        if (standard != null && !standard.isEmpty() && !standard.equals("null")) {
+            return resolveVariable(standard);
+        }
+
+        return "?";
+    }
+
+    /**
+     * Resolves a variable reference to its actual value.
+     */
+    private String resolveVariable(String value) {
+        if (value == null || !value.contains("${")) {
+            return value;
+        }
+
+        // Extract variable name from ${varName}
+        Matcher matcher = VAR_USAGE_PATTERN.matcher(value);
+        if (matcher.find()) {
+            String varName = matcher.group(1);
+            String resolvedValue = variableMap.get(varName);
+            if (resolvedValue != null) {
+                return resolvedValue;
+            }
+        }
+
+        // Return original if not resolved
+        return value;
+    }
+
+    /**
+     * Calculates total user count across all thread groups.
+     */
+    private void calculateTotalUsers() {
+        int numericTotal = 0;
+        List<String> unresolvedVars = new ArrayList<>();
+
+        for (String userCount : threadGroupUserCounts.values()) {
+            if (userCount != null && !userCount.equals("?")) {
+                try {
+                    numericTotal += Integer.parseInt(userCount);
+                } catch (NumberFormatException e) {
+                    // Still contains unresolved variable
+                    if (!unresolvedVars.contains(userCount)) {
+                        unresolvedVars.add(userCount);
+                    }
+                }
+            }
+        }
+
+        // Build result string
+        StringBuilder result = new StringBuilder();
+        if (numericTotal > 0 || unresolvedVars.isEmpty()) {
+            result.append(numericTotal);
+        }
+
+        if (!unresolvedVars.isEmpty()) {
+            if (result.length() > 0) {
+                result.append(" + ");
+            }
+            result.append(String.join(" + ", unresolvedVars));
+        }
+
+        totalUsers = result.length() > 0 ? result.toString() : "0";
     }
 
     // Inner classes for tracking variable information

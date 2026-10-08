@@ -36,32 +36,28 @@ public class SummaryPanel extends JPanel {
         add(overviewPanel);
         add(Box.createVerticalStrut(10));
 
-        JPanel corrPanel = new JPanel(new GridLayout(3, 1, 5, 3));
+        JPanel corrPanel = new JPanel(new GridLayout(1, 1, 5, 3));
         corrPanel.setBorder(new TitledBorder("Correlation"));
-        corrPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
+        corrPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 60));
 
         corrConfiguredLabel = new JLabel("Configured: 0");
         corrPartialLabel = new JLabel("Partial / Unused: 0");
         corrNotConfiguredLabel = new JLabel("Not Configured: 0");
 
         corrPanel.add(corrConfiguredLabel);
-        corrPanel.add(corrPartialLabel);
-        corrPanel.add(corrNotConfiguredLabel);
 
         add(corrPanel);
         add(Box.createVerticalStrut(10));
 
-        JPanel paramPanel = new JPanel(new GridLayout(3, 1, 5, 3));
+        JPanel paramPanel = new JPanel(new GridLayout(1, 1, 5, 3));
         paramPanel.setBorder(new TitledBorder("Parameterization"));
-        paramPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
+        paramPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 60));
 
         paramConfiguredLabel = new JLabel("Configured: 0");
         paramPartialLabel = new JLabel("Partial: 0");
         paramNotConfiguredLabel = new JLabel("Not Configured: 0");
 
         paramPanel.add(paramConfiguredLabel);
-        paramPanel.add(paramPartialLabel);
-        paramPanel.add(paramNotConfiguredLabel);
 
         add(paramPanel);
         add(Box.createVerticalGlue());
@@ -75,12 +71,8 @@ public class SummaryPanel extends JPanel {
                 (summary.notApplicable > 0 ? " (+" + summary.notApplicable + " N/A)" : ""));
 
         corrConfiguredLabel.setText("Configured: " + summary.correlationConfigured);
-        corrPartialLabel.setText("Partial / Unused: " + summary.correlationPartial);
-        corrNotConfiguredLabel.setText("Not Configured: " + summary.correlationNotConfigured);
 
         paramConfiguredLabel.setText("Configured: " + summary.parameterizationConfigured);
-        paramPartialLabel.setText("Partial: " + summary.parameterizationPartial);
-        paramNotConfiguredLabel.setText("Not Configured: " + summary.parameterizationNotConfigured);
 
         revalidate();
         repaint();

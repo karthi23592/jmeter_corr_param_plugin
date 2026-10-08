@@ -22,8 +22,6 @@ public class CorrelationParameterizationPanel extends JPanel {
     private final DefaultTreeModel treeModel;
     private final DetailsPanel detailsPanel;
     private final SummaryPanel summaryPanel;
-    private JTextField searchField;
-    private JComboBox<String> filterCombo;
     private JLabel statusBarLabel;
 
     private ElementStatus currentScanResult;
@@ -78,30 +76,6 @@ public class CorrelationParameterizationPanel extends JPanel {
         scanButton.addActionListener(this::onScanClicked);
         toolbar.add(scanButton);
 
-        toolbar.add(new JSeparator(SwingConstants.VERTICAL));
-
-        toolbar.add(new JLabel("Filter:"));
-        filterCombo = new JComboBox<>(new String[]{
-                "All",
-                "Correlation Issues",
-                "Parameterization Issues",
-                "Partial",
-                "Not Configured"
-        });
-        filterCombo.addActionListener(this::onFilterChanged);
-        toolbar.add(filterCombo);
-
-        toolbar.add(new JSeparator(SwingConstants.VERTICAL));
-
-        toolbar.add(new JLabel("Search:"));
-        searchField = new JTextField(15);
-        searchField.addActionListener(this::onSearchPerformed);
-        toolbar.add(searchField);
-
-        JButton searchBtn = new JButton("Go");
-        searchBtn.addActionListener(this::onSearchPerformed);
-        toolbar.add(searchBtn);
-
         toolbar.add(Box.createHorizontalStrut(20));
 
         JButton exportButton = new JButton("Export Report");
@@ -118,7 +92,7 @@ public class CorrelationParameterizationPanel extends JPanel {
         // Detect current JMX file path
         currentJmxFilePath = detectJmxFilePath();
 
-        SwingWorker<ElementStatus, Void> worker = new SwingWorker<>() {
+        SwingWorker<ElementStatus, Void> worker = new SwingWorker<ElementStatus, Void>() {
             @Override
             protected ElementStatus doInBackground() {
                 JMeterTreeModel jmeterTreeModel = getJMeterTreeModel();
@@ -239,121 +213,6 @@ public class CorrelationParameterizationPanel extends JPanel {
                 detailsPanel.showDetails((ElementStatus) userObject);
             }
         }
-    }
-
-    private void onFilterChanged(ActionEvent e) {
-        if (currentScanResult == null) return;
-
-        String filter = (String) filterCombo.getSelectedItem();
-        if ("All".equals(filter)) {
-            updateTree(currentScanResult);
-            return;
-        }
-
-        ElementStatus filtered = filterTree(currentScanResult, filter);
-        updateTree(filtered);
-    }
-
-    private ElementStatus filterTree(ElementStatus root, String filter) {
-        ElementStatus filteredRoot = new ElementStatus(root.getElementName(), root.getElementType(), root.getPath());
-        filteredRoot.setCorrelationResult(root.getCorrelationResult());
-        filteredRoot.setParameterizationResult(root.getParameterizationResult());
-
-        for (ElementStatus child : root.getChildren()) {
-            ElementStatus filteredChild = filterElement(child, filter);
-            if (filteredChild != null) {
-                filteredRoot.addChild(filteredChild);
-            }
-        }
-        return filteredRoot;
-    }
-
-    private ElementStatus filterElement(ElementStatus element, String filter) {
-        boolean matches = matchesFilter(element, filter);
-
-        ElementStatus result = new ElementStatus(element.getElementName(), element.getElementType(), element.getPath());
-        result.setCorrelationResult(element.getCorrelationResult());
-        result.setParameterizationResult(element.getParameterizationResult());
-
-        boolean hasMatchingChildren = false;
-        for (ElementStatus child : element.getChildren()) {
-            ElementStatus filteredChild = filterElement(child, filter);
-            if (filteredChild != null) {
-                result.addChild(filteredChild);
-                hasMatchingChildren = true;
-            }
-        }
-
-        if (matches || hasMatchingChildren) {
-            return result;
-        }
-        return null;
-    }
-
-    private boolean matchesFilter(ElementStatus element, String filter) {
-        switch (filter) {
-            case "Correlation Issues":
-                return element.getEffectiveCorrelationStatus() == ConfigurationStatus.NOT_CONFIGURED ||
-                       element.getEffectiveCorrelationStatus() == ConfigurationStatus.PARTIAL;
-            case "Parameterization Issues":
-                return element.getEffectiveParameterizationStatus() == ConfigurationStatus.NOT_CONFIGURED ||
-                       element.getEffectiveParameterizationStatus() == ConfigurationStatus.PARTIAL;
-            case "Partial":
-                return element.getEffectiveCorrelationStatus() == ConfigurationStatus.PARTIAL ||
-                       element.getEffectiveParameterizationStatus() == ConfigurationStatus.PARTIAL;
-            case "Not Configured":
-                return element.getEffectiveCorrelationStatus() == ConfigurationStatus.NOT_CONFIGURED ||
-                       element.getEffectiveParameterizationStatus() == ConfigurationStatus.NOT_CONFIGURED;
-            default:
-                return true;
-        }
-    }
-
-    private void onSearchPerformed(ActionEvent e) {
-        String searchText = searchField.getText().trim().toLowerCase();
-        if (searchText.isEmpty() || currentScanResult == null) {
-            if (currentScanResult != null) updateTree(currentScanResult);
-            return;
-        }
-
-        ElementStatus searchResult = searchTree(currentScanResult, searchText);
-        updateTree(searchResult);
-    }
-
-    private ElementStatus searchTree(ElementStatus root, String searchText) {
-        ElementStatus result = new ElementStatus(root.getElementName(), root.getElementType(), root.getPath());
-        result.setCorrelationResult(root.getCorrelationResult());
-        result.setParameterizationResult(root.getParameterizationResult());
-
-        for (ElementStatus child : root.getChildren()) {
-            ElementStatus searched = searchElement(child, searchText);
-            if (searched != null) {
-                result.addChild(searched);
-            }
-        }
-        return result;
-    }
-
-    private ElementStatus searchElement(ElementStatus element, String searchText) {
-        boolean nameMatches = element.getElementName().toLowerCase().contains(searchText);
-
-        ElementStatus result = new ElementStatus(element.getElementName(), element.getElementType(), element.getPath());
-        result.setCorrelationResult(element.getCorrelationResult());
-        result.setParameterizationResult(element.getParameterizationResult());
-
-        boolean hasMatchingChildren = false;
-        for (ElementStatus child : element.getChildren()) {
-            ElementStatus searched = searchElement(child, searchText);
-            if (searched != null) {
-                result.addChild(searched);
-                hasMatchingChildren = true;
-            }
-        }
-
-        if (nameMatches || hasMatchingChildren) {
-            return result;
-        }
-        return null;
     }
 
     private void onExportClicked(ActionEvent e) {
